@@ -214,14 +214,25 @@ public class NodeSession {
    * Resends the first pending WHOAREYOU challenge when a second ordinary packet arrives while a
    * handshake is already in progress. Mirrors geth's handleUnknown which always resends the current
    * challenge rather than issuing a fresh one with a different nonce.
+   *
+   * <p>Reads the entry via the values iterator rather than {@code get(nonce)} because {@link
+   * #pendingWhoAreYou} is a {@link LinkedHashMap} with {@code accessOrder=true} — using {@code get}
+   * would move the accessed entry to the tail, causing a subsequent call to pick a different
+   * "first" entry when multiple pending challenges exist.
    */
   public void resendFirstOutgoingWhoAreYou() {
+    final PendingWhoAreYou pending;
     synchronized (pendingWhoAreYou) {
-      if (!pendingWhoAreYou.isEmpty()) {
-        Bytes12 firstNonce = pendingWhoAreYou.keySet().iterator().next();
-        resendOutgoingWhoAreYouFor(firstNonce);
+      if (pendingWhoAreYou.isEmpty()) {
+        return;
       }
+      pending = pendingWhoAreYou.values().iterator().next();
     }
+    LOG.trace(
+        () ->
+            String.format(
+                "Resending outgoing WhoAreYou message %s in session %s", pending.packet(), this));
+    sendOutgoing(pending.maskingIV(), pending.packet());
   }
 
   /**
@@ -470,6 +481,12 @@ public class NodeSession {
     LOG.trace(
         () -> String.format("Switching status of node %s from %s to %s", nodeId, state, newStatus));
     this.state = newStatus;
+    if (newStatus == SessionState.AUTHENTICATED) {
+      // Drop pre-handshake nonces so a delayed WHOAREYOU echoing one of them cannot bind to this
+      // session via WhoAreYouSessionResolver and re-trigger handshake logic. Keeping
+      // lastOutboundNonce preserves the legitimate "peer lost our session" re-handshake path.
+      nodeSessionManager.clearOldNoncesForSession(this, lastOutboundNonce);
+    }
   }
 
   public Signer getSigner() {
