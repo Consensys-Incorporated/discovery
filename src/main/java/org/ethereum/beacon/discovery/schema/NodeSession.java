@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -135,7 +134,12 @@ public class NodeSession {
         outgoingPipeline,
         rnd,
         requestExpirationScheduler,
-        new ConcurrentHashMap<>());
+        // Insertion-ordered so getFirstAwait/SentRequestInfo() returns the earliest-created
+        // (≈ earliest-sent) request — the one a WHOAREYOU nonce-referenced (spec §189-201).
+        // ConcurrentHashMap iterates in hash-bucket order, which would pick a non-deterministic
+        // request to embed in the handshake. Synchronization is provided by NodeSession's
+        // synchronized methods (all access goes through them).
+        Collections.synchronizedMap(new LinkedHashMap<>()));
   }
 
   @VisibleForTesting

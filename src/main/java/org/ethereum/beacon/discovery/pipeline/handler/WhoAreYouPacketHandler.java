@@ -66,16 +66,23 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       final NodeRecord nodeRecord = session.getNodeRecord().orElseThrow();
 
       Bytes12 whoAreYouNonce = whoAreYouPacket.getHeader().getStaticHeader().getNonce();
-      if (!session.hasRecentOutboundNonce(whoAreYouNonce)) {
-        // WHOAREYOU references a nonce we never sent, or one already evicted from our recent
-        // window. Per spec §"WHOAREYOU is only ever valid as a response to a previously sent
-        // request" — silently ignore. Do not cancel pending requests, as a spurious or stale
-        // challenge must not abort live work.
+      // Per spec §"WHOAREYOU is only ever valid as a response to a previously sent request":
+      // accept iff the nonce is in our recent outbound window AND at least one request is still
+      // pending. The first check rejects unknown / evicted nonces. The second check rejects a
+      // stale or replayed WHOAREYOU whose referenced request has already been answered — without
+      // this, a delayed duplicate could overwrite live session keys on an established session.
+      final boolean recent = session.hasRecentOutboundNonce(whoAreYouNonce);
+      final boolean hasPendingRequests =
+          session.getFirstAwaitRequestInfo().isPresent()
+              || session.getFirstSentRequestInfo().isPresent();
+      if (!recent || !hasPendingRequests) {
         LOG.trace(
-            "Ignoring WHOAREYOU [{}] from node {}: nonce not in recent outbound window (status {})",
+            "Ignoring WHOAREYOU [{}] from node {} (status {}): recent={}, hasPendingRequests={}",
             whoAreYouPacket,
             nodeRecord,
-            session.getState());
+            session.getState(),
+            recent,
+            hasPendingRequests);
         envelope.remove(Field.PACKET_WHOAREYOU);
         return;
       }
