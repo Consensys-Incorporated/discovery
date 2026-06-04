@@ -476,10 +476,9 @@ public class HandshakeHandlersTest {
     RawPacket handshakeRaw = outgoing1Packets.poll(1, TimeUnit.SECONDS);
     assertNotNull(handshakeRaw, "Expected handshake packet after WHOAREYOU");
 
-    // The embedded request's status MUST be SENT after the handshake is sent.
-    // This assertion fails today because WhoAreYouPacketHandler never marks it as SENT,
-    // which causes NextTaskHandler to re-send the same request as an ordinary packet 1 second
-    // later, leading to a duplicate send and a broken session state on the second PONG.
+    // Embedded request must be marked SENT after the handshake is emitted; otherwise
+    // NextTaskHandler would re-send it as a duplicate ordinary packet ~1 s after
+    // authentication.
     assertThat(requestInfo.getTaskStatus())
         .as("request embedded in handshake should be SENT, not AWAIT")
         .isEqualTo(TaskStatus.SENT);
