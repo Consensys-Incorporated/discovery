@@ -389,6 +389,16 @@ public class NodeSession {
     return newNonce;
   }
 
+  /**
+   * Generates a nonce for a <em>handshake</em> packet. Unlike {@link #generateNonce()}, this nonce
+   * is not tracked in the recent-outbound window because WHOAREYOU packets never reference
+   * handshake-packet nonces; tracking them would wastefully evict ordinary-packet nonces from the
+   * bounded window.
+   */
+  public synchronized Bytes12 generateHandshakeNonce() {
+    return nonceGenerator.apply(rnd);
+  }
+
   public synchronized boolean hasRecentOutboundNonce(final Bytes12 nonce) {
     return recentOutboundNonces.contains(nonce);
   }

@@ -150,7 +150,7 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       Header<HandshakeAuthData> header =
           Header.createHandshakeHeader(
               session.getHomeNodeId(),
-              session.generateNonce(),
+              session.generateHandshakeNonce(),
               idSignature,
               ephemeralPubKey,
               Optional.ofNullable(respRecord));

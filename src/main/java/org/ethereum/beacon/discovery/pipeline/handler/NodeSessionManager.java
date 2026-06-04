@@ -154,11 +154,11 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
    * MAX_RECENT_OUTBOUND_NONCES}.
    */
   public void onSessionLastNonceUpdate(
-      final NodeSession session, final Optional<Bytes12> previousNonce, final Bytes12 newNonce) {
+      final NodeSession session, final Optional<Bytes12> evictedNonce, final Bytes12 newNonce) {
     // Value-conditional remove so a colliding nonce (or a delete-then-evict race with another
     // session that has since reused the nonce) cannot evict the other session's fresh mapping.
     // Mirrors removeNoncesForSession.
-    previousNonce.ifPresent(n -> lastNonceToSession.remove(n, session));
+    evictedNonce.ifPresent(n -> lastNonceToSession.remove(n, session));
     lastNonceToSession.put(newNonce, session);
   }
 
