@@ -128,8 +128,9 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
     if (removedSession != null) {
       // Mark inactive to prevent registering any new nonces
       removedSession.markInactive();
-      // And then clean up the last recorded nonce, if any
-      removedSession.getLastOutboundNonce().ifPresent(lastNonceToSession::remove);
+      // Clean up ALL nonce mappings for this session. Multiple nonces may be registered when
+      // several packets were sent before the handshake completed (see onSessionLastNonceUpdate).
+      lastNonceToSession.values().removeIf(s -> s == removedSession);
     }
   }
 
@@ -147,7 +148,9 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
 
   public void onSessionLastNonceUpdate(
       final NodeSession session, final Optional<Bytes12> previousNonce, final Bytes12 newNonce) {
-    previousNonce.ifPresent(lastNonceToSession::remove);
+    // Keep all nonces for this session. A WHOAREYOU may reference any previously sent packet's
+    // nonce (e.g. when multiple packets are sent before the handshake completes). All entries
+    // are cleaned up together when the session is deleted.
     lastNonceToSession.put(newNonce, session);
   }
 

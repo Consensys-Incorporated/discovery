@@ -46,11 +46,17 @@ public class UnauthorizedMessagePacketHandler extends AbstractSkippingEnvelopeHa
     Bytes12 msgNonce = unknownPacket.getHeader().getStaticHeader().getNonce();
 
     // If we have already issued a WHOAREYOU for this exact ordinary packet nonce, resend that
-    // same challenge — the initiator may have already signed against it. For any other nonce,
-    // fall through and issue a fresh WHOAREYOU; previous in-flight challenges remain queued so a
-    // delayed handshake signed against one of them can still be validated.
+    // same challenge — the initiator may have already signed against it.
     if (session.hasPendingWhoAreYouForNonce(msgNonce)) {
       session.resendOutgoingWhoAreYouFor(msgNonce);
+      return;
+    }
+    // If any WHOAREYOU challenge is already in flight (different nonce), resend the first one.
+    // The initiator may have signed against it and is now sending concurrent requests before the
+    // handshake completes. Issuing a new challenge with a different nonce would break the
+    // in-progress handshake. Mirrors geth's handleUnknown behaviour.
+    if (session.getState() == SessionState.WHOAREYOU_SENT) {
+      session.resendFirstOutgoingWhoAreYou();
       return;
     }
 

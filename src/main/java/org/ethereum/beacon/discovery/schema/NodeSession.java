@@ -211,6 +211,20 @@ public class NodeSession {
   }
 
   /**
+   * Resends the first pending WHOAREYOU challenge when a second ordinary packet arrives while a
+   * handshake is already in progress. Mirrors geth's handleUnknown which always resends the current
+   * challenge rather than issuing a fresh one with a different nonce.
+   */
+  public void resendFirstOutgoingWhoAreYou() {
+    synchronized (pendingWhoAreYou) {
+      if (!pendingWhoAreYou.isEmpty()) {
+        Bytes12 firstNonce = pendingWhoAreYou.keySet().iterator().next();
+        resendOutgoingWhoAreYouFor(firstNonce);
+      }
+    }
+  }
+
+  /**
    * Returns the challenge data ({@code maskingIV || header bytes}) for every pending WHOAREYOU. The
    * handshake handler attempts to match the incoming handshake against each candidate because the
    * handshake packet does not directly identify which challenge it answers.

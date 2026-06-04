@@ -179,6 +179,51 @@ public class DiscoveryManagerTest {
     assertThat(pingRes2).isCompleted();
   }
 
+  /**
+   * Mirrors geth's TestUDPv5_callResend: two pings issued before any session exists should both
+   * complete after the handshake exchange finishes.
+   */
+  @Test
+  public void callResendAfterHandshake() {
+    TestNetwork network = new TestNetwork();
+    TestManagerWrapper m1 = network.createDiscoveryManager(1);
+    TestManagerWrapper m2 = network.createDiscoveryManager(2);
+
+    // Issue two pings before the session is established (analogous to geth's two goroutines).
+    CompletableFuture<Void> ping1 = m1.getDiscoveryManager().ping(m2.getNodeRecord());
+    CompletableFuture<Void> ping2 = m1.getDiscoveryManager().ping(m2.getNodeRecord());
+
+    // m1 sends a random ordinary packet to initiate the handshake.
+    m2.deliver(m1.nextOutbound());
+
+    // m2 doesn't recognise m1 → sends WHOAREYOU.
+    TestMessage whoAreYou = m2.nextOutbound();
+    assertThat(whoAreYou.getPacket()).isInstanceOf(WhoAreYouPacket.class);
+    m1.deliver(whoAreYou);
+
+    // m1 responds with a handshake packet that embeds the first pending ping (the "resend").
+    TestMessage handshake = m1.nextOutbound();
+    assertThat(handshake.getPacket()).isInstanceOf(HandshakeMessagePacket.class);
+    m2.deliver(handshake);
+
+    // m2 processes the handshake, extracts the embedded ping, and sends a PONG.
+    TestMessage pong1 = m2.nextOutbound();
+    assertThat(pong1.getPacket()).isInstanceOf(OrdinaryMessagePacket.class);
+    m1.deliver(pong1);
+
+    // The second pending ping must now be sent as an ordinary packet (after the 1-second delay).
+    TestMessage secondPing = m1.nextOutbound();
+    assertThat(secondPing.getPacket()).isInstanceOf(OrdinaryMessagePacket.class);
+    m2.deliver(secondPing);
+
+    // m2 sends a PONG for the second ping.
+    m1.deliver(m2.nextOutbound());
+
+    // Both ping futures must have completed.
+    assertThat(ping1).isCompleted();
+    assertThat(ping2).isCompleted();
+  }
+
   @Test
   public void testUniqueAesGcmNonceUsed() {
     TestNetwork network = new TestNetwork();

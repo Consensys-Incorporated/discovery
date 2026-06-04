@@ -5,6 +5,7 @@
 package org.ethereum.beacon.discovery;
 
 import static java.util.Collections.singletonList;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.ethereum.beacon.discovery.AddressAccessPolicy.ALLOW_ALL;
 import static org.ethereum.beacon.discovery.TestUtil.NODE_RECORD_FACTORY_NO_VERIFICATION;
 import static org.ethereum.beacon.discovery.pipeline.Field.BAD_PACKET;
@@ -58,6 +59,7 @@ import org.ethereum.beacon.discovery.pipeline.handler.WhoAreYouPacketHandler;
 import org.ethereum.beacon.discovery.pipeline.info.FindNodeResponseHandler;
 import org.ethereum.beacon.discovery.pipeline.info.MultiPacketResponseHandler;
 import org.ethereum.beacon.discovery.pipeline.info.Request;
+import org.ethereum.beacon.discovery.pipeline.info.RequestInfo;
 import org.ethereum.beacon.discovery.scheduler.ExpirationScheduler;
 import org.ethereum.beacon.discovery.scheduler.ExpirationSchedulerFactory;
 import org.ethereum.beacon.discovery.scheduler.Scheduler;
@@ -69,6 +71,7 @@ import org.ethereum.beacon.discovery.storage.KBuckets;
 import org.ethereum.beacon.discovery.storage.LocalNodeRecordStore;
 import org.ethereum.beacon.discovery.storage.NewAddressHandler;
 import org.ethereum.beacon.discovery.storage.NodeRecordListener;
+import org.ethereum.beacon.discovery.task.TaskStatus;
 import org.ethereum.beacon.discovery.type.Bytes12;
 import org.ethereum.beacon.discovery.type.Bytes16;
 import org.junit.jupiter.api.Test;
@@ -374,6 +377,114 @@ public class HandshakeHandlersTest {
     assertTrue(nodeSessionAt2For1.isAuthenticated());
     assertNotNull(envelopeAt2From1.get(MESSAGE));
     assertNull(envelopeAt2From1.get(BAD_PACKET));
+  }
+
+  /**
+   * Mirrors geth's TestUDPv5_callResend: the request whose message is embedded in the handshake
+   * packet must be marked SENT so that NextTaskHandler does not re-send it as a second ordinary
+   * packet after the session becomes authenticated.
+   *
+   * <p>Expected to FAIL until WhoAreYouPacketHandler updates the embedded request's status.
+   */
+  @Test
+  public void pendingRequestIsMarkedSentWhenEmbeddedInHandshake() throws Exception {
+    NodeInfo nodePair1 = TestUtil.generateUnverifiedNode(30303);
+    NodeRecord nodeRecord1 = nodePair1.getNodeRecord();
+    Signer signer1 = new DefaultSigner(nodePair1.getSecretKey());
+    NodeInfo nodePair2 = TestUtil.generateUnverifiedNode(30304);
+    NodeRecord nodeRecord2 = nodePair2.getNodeRecord();
+    Signer signer2 = new DefaultSigner(nodePair2.getSecretKey());
+
+    final LocalNodeRecordStore localNodeRecordStoreAt1 =
+        new LocalNodeRecordStore(
+            nodeRecord1, signer1, NodeRecordListener.NOOP, NewAddressHandler.NOOP);
+    KBuckets nodeBucketStorage1 =
+        new KBuckets(clock, localNodeRecordStoreAt1, new LivenessChecker(clock));
+    KBuckets nodeBucketStorage2 =
+        new KBuckets(
+            clock,
+            new LocalNodeRecordStore(
+                nodeRecord2, signer2, NodeRecordListener.NOOP, NewAddressHandler.NOOP),
+            new LivenessChecker(clock));
+
+    LinkedBlockingQueue<RawPacket> outgoing1Packets = new LinkedBlockingQueue<>();
+    final ExpirationSchedulerFactory expirationSchedulerFactory =
+        new ExpirationSchedulerFactory(Executors.newSingleThreadScheduledExecutor());
+    final ExpirationScheduler<Bytes> requestExpirationScheduler =
+        expirationSchedulerFactory.create(60, TimeUnit.SECONDS);
+
+    NodeSession nodeSessionAt1For2 =
+        new NodeSession(
+            nodeRecord2.getNodeId(),
+            Optional.of(nodeRecord2),
+            nodePair2.getNodeRecord().getUdpAddress().orElseThrow(),
+            mock(NodeSessionManager.class),
+            localNodeRecordStoreAt1,
+            signer1,
+            nodeBucketStorage1,
+            parcel -> outgoing1Packets.add(parcel.getPacket()),
+            rnd,
+            requestExpirationScheduler);
+
+    LinkedBlockingQueue<RawPacket> outgoing2Packets = new LinkedBlockingQueue<>();
+    NodeSession nodeSessionAt2For1 =
+        new NodeSession(
+            nodeRecord1.getNodeId(),
+            Optional.of(nodeRecord1),
+            nodeRecord1.getUdpAddress().orElseThrow(),
+            mock(NodeSessionManager.class),
+            new LocalNodeRecordStore(
+                nodeRecord2, signer2, NodeRecordListener.NOOP, NewAddressHandler.NOOP),
+            signer2,
+            nodeBucketStorage2,
+            parcel -> outgoing2Packets.add(parcel.getPacket()),
+            rnd,
+            requestExpirationScheduler);
+
+    Scheduler taskScheduler = Schedulers.createDefault().events();
+    Pipeline outgoingPipeline = new PipelineImpl().build();
+    WhoAreYouPacketHandler whoAreYouPacketHandlerNode1 =
+        new WhoAreYouPacketHandler(outgoingPipeline, taskScheduler);
+
+    // Register a pending ping request (AWAIT status).
+    RequestInfo requestInfo =
+        nodeSessionAt1For2.createNextRequest(
+            new Request<>(
+                new CompletableFuture<>(),
+                id -> new PingMessage(id, UInt64.ZERO),
+                MultiPacketResponseHandler.SINGLE_PACKET_RESPONSE_HANDLER));
+
+    // Advance session to RANDOM_PACKET_SENT (as NextTaskHandler would do).
+    nodeSessionAt1For2.sendOutgoingRandom(Bytes.random(128));
+    nodeSessionAt1For2.setState(NodeSession.SessionState.RANDOM_PACKET_SENT);
+    Bytes12 randomNonce = nodeSessionAt1For2.getLastOutboundNonce().orElseThrow();
+    outgoing1Packets.clear();
+
+    // Build WHOAREYOU for the random packet's nonce and deliver it to WhoAreYouPacketHandler.
+    Bytes16 idNonce = Bytes16.random(rnd);
+    WhoAreYouPacket whoAreYouPacket =
+        WhoAreYouPacket.create(Header.createWhoAreYouHeader(randomNonce, idNonce, UInt64.ZERO));
+    nodeSessionAt2For1.sendOutgoingWhoAreYou(whoAreYouPacket);
+    RawPacket whoAreYouRaw = outgoing2Packets.poll(1, TimeUnit.SECONDS);
+    assertNotNull(whoAreYouRaw);
+
+    Envelope envelope = new Envelope();
+    envelope.put(Field.PACKET_WHOAREYOU, whoAreYouPacket);
+    envelope.put(Field.SESSION, nodeSessionAt1For2);
+    envelope.put(MASKING_IV, whoAreYouRaw.getMaskingIV());
+    whoAreYouPacketHandlerNode1.handle(envelope);
+
+    // Handshake must have been emitted with the pending request's message embedded.
+    RawPacket handshakeRaw = outgoing1Packets.poll(1, TimeUnit.SECONDS);
+    assertNotNull(handshakeRaw, "Expected handshake packet after WHOAREYOU");
+
+    // The embedded request's status MUST be SENT after the handshake is sent.
+    // This assertion fails today because WhoAreYouPacketHandler never marks it as SENT,
+    // which causes NextTaskHandler to re-send the same request as an ordinary packet 1 second
+    // later, leading to a duplicate send and a broken session state on the second PONG.
+    assertThat(requestInfo.getTaskStatus())
+        .as("request embedded in handshake should be SENT, not AWAIT")
+        .isEqualTo(TaskStatus.SENT);
   }
 
   private OrdinaryMessagePacket createPingPacket(
