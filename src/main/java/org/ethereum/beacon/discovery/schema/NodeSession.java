@@ -331,7 +331,12 @@ public class NodeSession {
   private synchronized void resetHandshakeState() {
     if (state == SessionState.WHOAREYOU_SENT || state == SessionState.RANDOM_PACKET_SENT) {
       pendingWhoAreYou.clear();
-      recentOutboundNonces.clear();
+      if (!recentOutboundNonces.isEmpty()) {
+        // Route bulk eviction through the manager so lastNonceToSession stays in sync with the
+        // bounded window. Without this, orphaned mappings would linger until session delete.
+        nodeSessionManager.removeNoncesForSession(this, recentOutboundNonces);
+        recentOutboundNonces.clear();
+      }
       setState(SessionState.INITIAL);
     }
   }
