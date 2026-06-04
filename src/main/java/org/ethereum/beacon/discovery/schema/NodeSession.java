@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -63,6 +64,15 @@ public class NodeSession {
    */
   @VisibleForTesting static final int MAX_PENDING_WHOAREYOU = 5;
 
+  /**
+   * Maximum number of recent outbound nonces retained per session. A WHOAREYOU is accepted iff its
+   * nonce is one of the last {@code MAX_RECENT_OUTBOUND_NONCES} we sent — broader than just the
+   * latest (so concurrent ordinary packets work, and a resent WHOAREYOU referencing an earlier
+   * packet is still bindable), narrower than "any nonce we've ever sent" (no unbounded growth in
+   * {@code NodeSessionManager.lastNonceToSession}; stale post-auth WHOAREYOUs evict naturally).
+   */
+  @VisibleForTesting static final int MAX_RECENT_OUTBOUND_NONCES = 8;
+
   private final Bytes32 homeNodeId;
   private final LocalNodeRecordStore localNodeRecordStore;
   private final NodeSessionManager nodeSessionManager;
@@ -95,6 +105,11 @@ public class NodeSession {
           });
 
   private Optional<Bytes12> lastOutboundNonce = Optional.empty();
+
+  // Bounded set of recent outbound nonces in insertion order. Used by the initiator to validate
+  // incoming WHOAREYOU packets and by NodeSessionManager to bind WHOAREYOU → session. Capped at
+  // MAX_RECENT_OUTBOUND_NONCES so memory does not grow with session lifetime.
+  private final LinkedHashSet<Bytes12> recentOutboundNonces = new LinkedHashSet<>();
   private boolean active = true;
   private final Function<Random, Bytes12> nonceGenerator;
 
@@ -312,6 +327,7 @@ public class NodeSession {
   private synchronized void resetHandshakeState() {
     if (state == SessionState.WHOAREYOU_SENT || state == SessionState.RANDOM_PACKET_SENT) {
       pendingWhoAreYou.clear();
+      recentOutboundNonces.clear();
       setState(SessionState.INITIAL);
     }
   }
@@ -344,15 +360,24 @@ public class NodeSession {
   /** Generates random nonce */
   public synchronized Bytes12 generateNonce() {
     final Bytes12 newNonce = nonceGenerator.apply(rnd);
-    final Optional<Bytes12> oldNonce = lastOutboundNonce;
     lastOutboundNonce = Optional.of(newNonce);
+    recentOutboundNonces.add(newNonce);
+    Optional<Bytes12> evicted = Optional.empty();
+    if (recentOutboundNonces.size() > MAX_RECENT_OUTBOUND_NONCES) {
+      final Bytes12 eldest = recentOutboundNonces.iterator().next();
+      recentOutboundNonces.remove(eldest);
+      evicted = Optional.of(eldest);
+    }
     if (active) {
-      // Update while synchronized to ensure only one update in flight at a time. Otherwise the
-      // previous nonce may not have been recorded before we try to remove it leading to a memory
-      // leak. Also only records the session if it's active to avoid re-adding a removed session
-      nodeSessionManager.onSessionLastNonceUpdate(this, oldNonce, newNonce);
+      // Update while synchronized so the manager's map stays consistent with the session's
+      // bounded window. Skip when the session is inactive to avoid re-adding a removed session.
+      nodeSessionManager.onSessionLastNonceUpdate(this, evicted, newNonce);
     }
     return newNonce;
+  }
+
+  public synchronized boolean hasRecentOutboundNonce(final Bytes12 nonce) {
+    return recentOutboundNonces.contains(nonce);
   }
 
   public synchronized Optional<Bytes12> getLastOutboundNonce() {
@@ -481,12 +506,6 @@ public class NodeSession {
     LOG.trace(
         () -> String.format("Switching status of node %s from %s to %s", nodeId, state, newStatus));
     this.state = newStatus;
-    if (newStatus == SessionState.AUTHENTICATED) {
-      // Drop pre-handshake nonces so a delayed WHOAREYOU echoing one of them cannot bind to this
-      // session via WhoAreYouSessionResolver and re-trigger handshake logic. Keeping
-      // lastOutboundNonce preserves the legitimate "peer lost our session" re-handshake path.
-      nodeSessionManager.clearOldNoncesForSession(this, lastOutboundNonce);
-    }
   }
 
   public Signer getSigner() {

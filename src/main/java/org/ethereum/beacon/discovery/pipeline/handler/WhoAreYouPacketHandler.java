@@ -66,22 +66,18 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       final NodeRecord nodeRecord = session.getNodeRecord().orElseThrow();
 
       Bytes12 whoAreYouNonce = whoAreYouPacket.getHeader().getStaticHeader().getNonce();
-      boolean nonceMatches =
-          session.getLastOutboundNonce().map(whoAreYouNonce::equals).orElse(false);
-      if (!nonceMatches) {
-        boolean hasPendingRequests =
-            session.getFirstAwaitRequestInfo().isPresent()
-                || session.getFirstSentRequestInfo().isPresent();
-        if (!hasPendingRequests) {
-          LOG.trace(
-              "Verification not passed for message [{}] from node {} in status {}",
-              whoAreYouPacket,
-              nodeRecord,
-              session.getState());
-          envelope.remove(Field.PACKET_WHOAREYOU);
-          session.cancelAllRequests("Bad WHOAREYOU received from node");
-          return;
-        }
+      if (!session.hasRecentOutboundNonce(whoAreYouNonce)) {
+        // WHOAREYOU references a nonce we never sent, or one already evicted from our recent
+        // window. Per spec §"WHOAREYOU is only ever valid as a response to a previously sent
+        // request" — silently ignore. Do not cancel pending requests, as a spurious or stale
+        // challenge must not abort live work.
+        LOG.trace(
+            "Ignoring WHOAREYOU [{}] from node {}: nonce not in recent outbound window (status {})",
+            whoAreYouPacket,
+            nodeRecord,
+            session.getState());
+        envelope.remove(Field.PACKET_WHOAREYOU);
+        return;
       }
       Bytes remotePubKey = (Bytes) nodeRecord.get(EnrField.PKEY_SECP256K1);
       byte[] ephemeralKeyBytes = new byte[32];

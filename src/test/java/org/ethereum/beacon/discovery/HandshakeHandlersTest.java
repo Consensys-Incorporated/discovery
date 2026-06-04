@@ -383,8 +383,6 @@ public class HandshakeHandlersTest {
    * Mirrors geth's TestUDPv5_callResend: the request whose message is embedded in the handshake
    * packet must be marked SENT so that NextTaskHandler does not re-send it as a second ordinary
    * packet after the session becomes authenticated.
-   *
-   * <p>Expected to FAIL until WhoAreYouPacketHandler updates the embedded request's status.
    */
   @Test
   public void pendingRequestIsMarkedSentWhenEmbeddedInHandshake() throws Exception {

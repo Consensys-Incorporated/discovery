@@ -146,28 +146,16 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
     return Optional.ofNullable(lastNonceToSession.get(nonce));
   }
 
+  /**
+   * Mirrors {@link NodeSession}'s bounded recent-outbound-nonce window. The session passes the
+   * nonce evicted from its window (if any) so we can drop the matching {@code lastNonceToSession}
+   * entry at the same time. This keeps the map bounded at {@code num_sessions *
+   * MAX_RECENT_OUTBOUND_NONCES}.
+   */
   public void onSessionLastNonceUpdate(
       final NodeSession session, final Optional<Bytes12> previousNonce, final Bytes12 newNonce) {
-    // Keep all nonces for this session. A WHOAREYOU may reference any previously sent packet's
-    // nonce (e.g. when multiple packets are sent before the handshake completes). Pre-handshake
-    // entries are cleared on AUTHENTICATED transition (clearOldNoncesForSession); any remaining
-    // entries are removed when the session is deleted.
+    previousNonce.ifPresent(lastNonceToSession::remove);
     lastNonceToSession.put(newNonce, session);
-  }
-
-  /**
-   * Removes every {@code lastNonceToSession} entry for the given session except {@code keepNonce}
-   * (if present). Called on the AUTHENTICATED transition so a late-arriving WHOAREYOU echoing a
-   * pre-handshake nonce cannot re-trigger handshake logic on the now-established session.
-   */
-  public void clearOldNoncesForSession(
-      final NodeSession session, final Optional<Bytes12> keepNonce) {
-    lastNonceToSession
-        .entrySet()
-        .removeIf(
-            e ->
-                e.getValue() == session // identity check intentional
-                    && !keepNonce.map(e.getKey()::equals).orElse(false));
   }
 
   private NodeSession createNodeSession(
