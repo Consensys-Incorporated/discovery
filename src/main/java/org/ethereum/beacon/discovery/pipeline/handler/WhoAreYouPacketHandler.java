@@ -111,15 +111,14 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
               ephemeralKeyPair.secretKey(),
               remotePubKey,
               challengeData);
-      session.setInitiatorKey(hkdfKeys.getInitiatorKey());
-      session.setRecipientKey(hkdfKeys.getRecipientKey());
       final Optional<RequestInfo> embeddedRequestOpt =
           session.getFirstAwaitRequestInfo().or(session::getFirstSentRequestInfo);
       if (embeddedRequestOpt.isEmpty()) {
         // Race: the last pending request expired between the hasPendingRequests gate above
         // and this lookup (session monitor is released between the two synchronized calls).
         // Treat the same as a gate miss — ignore the WHOAREYOU rather than throwing into
-        // the catch path and calling cancelAllRequests for a benign race.
+        // the catch path and calling cancelAllRequests for a benign race. Note: we have NOT
+        // yet applied hkdfKeys to the session, so the previous session keys remain valid.
         LOG.trace(
             "Ignoring WHOAREYOU [{}] from node {} (status {}): no pending request after race",
             whoAreYouPacket,
@@ -130,6 +129,10 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       }
       final RequestInfo embeddedRequest = embeddedRequestOpt.get();
       final V5Message message = embeddedRequest.getMessage();
+
+      // Past the race-check: we will emit a handshake, so it's safe to install the new keys.
+      session.setInitiatorKey(hkdfKeys.getInitiatorKey());
+      session.setRecipientKey(hkdfKeys.getRecipientKey());
 
       Bytes ephemeralPubKey =
           Functions.deriveCompressedPublicKeyFromPrivate(ephemeralKeyPair.secretKey());
