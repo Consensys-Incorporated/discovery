@@ -322,7 +322,11 @@ public class NodeSession {
                   String.format(
                       "Request %s expired for id %s in session %s: no reply",
                       requestInfo, wrappedId, this));
-          requestIdStatuses.remove(wrappedId);
+          // Route through the synchronized helper so the removal serialises with iterations
+          // in getFirstAwait/SentRequestInfo() and cancelAllRequests(). The underlying
+          // synchronizedMap(LinkedHashMap) throws CME on concurrent structural modification
+          // during iteration.
+          clearRequestInfo(wrappedId);
           resetHandshakeState();
         });
     return requestInfo;
