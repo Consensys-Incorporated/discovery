@@ -336,9 +336,12 @@ public class NodeSession {
     if (state == SessionState.WHOAREYOU_SENT || state == SessionState.RANDOM_PACKET_SENT) {
       pendingWhoAreYou.clear();
       if (!recentOutboundNonces.isEmpty()) {
+        // Snapshot before clearing so the manager iterates a stable collection. The live set is
+        // cleared immediately after; passing it directly would hand the manager a reference that
+        // becomes empty before it finishes iterating (in tests) or is unexpectedly mutated.
         // Route bulk eviction through the manager so lastNonceToSession stays in sync with the
         // bounded window. Without this, orphaned mappings would linger until session delete.
-        nodeSessionManager.removeNoncesForSession(this, recentOutboundNonces);
+        nodeSessionManager.removeNoncesForSession(this, Set.copyOf(recentOutboundNonces));
         recentOutboundNonces.clear();
       }
       setState(SessionState.INITIAL);
@@ -471,8 +474,10 @@ public class NodeSession {
   }
 
   public synchronized Optional<RequestInfo> getRequestInfo(final Bytes requestId) {
-    final RequestInfo requestInfo = requestIdStatuses.get(requestId);
-    return requestId == null ? Optional.empty() : Optional.of(requestInfo);
+    if (requestId == null) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(requestIdStatuses.get(requestId));
   }
 
   /**
@@ -489,6 +494,11 @@ public class NodeSession {
     return requestIdStatuses.values().stream()
         .filter(requestInfo -> SENT.equals(requestInfo.getTaskStatus()))
         .findFirst();
+  }
+
+  /** Returns the first request eligible for handshake embedding (AWAIT preferred over SENT). */
+  public synchronized Optional<RequestInfo> getFirstPendingRequestInfo() {
+    return getFirstAwaitRequestInfo().or(this::getFirstSentRequestInfo);
   }
 
   public Stream<NodeRecord> getNodeRecordsInBucket(final int distance) {

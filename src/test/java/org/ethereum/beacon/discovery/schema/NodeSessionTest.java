@@ -6,6 +6,7 @@ package org.ethereum.beacon.discovery.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -356,6 +357,62 @@ public class NodeSessionTest {
 
     assertThat(session.getState()).isEqualTo(SessionState.INITIAL);
     assertThat(session.getPendingWhoAreYouChallenges()).isEmpty();
+  }
+
+  @Test
+  void generateNonce_shouldAddToRecentOutboundWindow() {
+    final Bytes12 nonce = session.generateNonce();
+    assertThat(session.hasRecentOutboundNonce(nonce)).isTrue();
+  }
+
+  @Test
+  void generateNonce_shouldEvictOldestNonceWhenWindowFull() {
+    final Bytes12[] nonces = new Bytes12[NodeSession.MAX_RECENT_OUTBOUND_NONCES + 1];
+    for (int i = 0; i < nonces.length; i++) {
+      nonces[i] = session.generateNonce();
+    }
+
+    assertThat(session.hasRecentOutboundNonce(nonces[0])).isFalse();
+    for (int i = 1; i < nonces.length; i++) {
+      assertThat(session.hasRecentOutboundNonce(nonces[i])).isTrue();
+    }
+  }
+
+  @Test
+  void generateNonce_shouldNotifyManagerWithEvictedNonceWhenWindowOverflows() {
+    final Bytes12 firstNonce = session.generateNonce();
+    for (int i = 1; i < NodeSession.MAX_RECENT_OUTBOUND_NONCES; i++) {
+      session.generateNonce();
+    }
+    // firstNonce is now the eldest in the full window; one more call evicts it.
+    session.generateNonce();
+    verify(nodeSessionManager)
+        .onSessionLastNonceUpdate(eq(session), eq(Optional.of(firstNonce)), any());
+  }
+
+  @Test
+  void generateHandshakeNonce_shouldNotAddToRecentOutboundWindow() {
+    final Bytes12 nonce = session.generateHandshakeNonce();
+    assertThat(session.hasRecentOutboundNonce(nonce)).isFalse();
+  }
+
+  @Test
+  void resetHandshakeState_shouldClearNoncesAndNotifyManager() {
+    final Request<?> request = createRequestMock();
+    final RequestInfo requestInfo = session.createNextRequest(request);
+    final ArgumentCaptor<Runnable> timeoutHandlerCaptor = ArgumentCaptor.forClass(Runnable.class);
+    verify(expirationScheduler).put(eq(requestInfo.getRequestId()), timeoutHandlerCaptor.capture());
+
+    final Bytes12 nonce = session.generateNonce();
+    session.setState(SessionState.RANDOM_PACKET_SENT);
+    assertThat(session.hasRecentOutboundNonce(nonce)).isTrue();
+
+    timeoutHandlerCaptor.getValue().run();
+
+    assertThat(session.getState()).isEqualTo(SessionState.INITIAL);
+    assertThat(session.hasRecentOutboundNonce(nonce)).isFalse();
+
+    verify(nodeSessionManager).removeNoncesForSession(eq(session), argThat(c -> c.contains(nonce)));
   }
 
   private Bytes singleChallenge() {

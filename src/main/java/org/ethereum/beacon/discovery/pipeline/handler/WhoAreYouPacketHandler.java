@@ -72,9 +72,7 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       // stale or replayed WHOAREYOU whose referenced request has already been answered — without
       // this, a delayed duplicate could overwrite live session keys on an established session.
       final boolean recent = session.hasRecentOutboundNonce(whoAreYouNonce);
-      final boolean hasPendingRequests =
-          session.getFirstAwaitRequestInfo().isPresent()
-              || session.getFirstSentRequestInfo().isPresent();
+      final boolean hasPendingRequests = session.getFirstPendingRequestInfo().isPresent();
       if (!recent || !hasPendingRequests) {
         LOG.trace(
             "Ignoring WHOAREYOU [{}] from node {} (status {}): recent={}, hasPendingRequests={}",
@@ -111,11 +109,10 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
               ephemeralKeyPair.secretKey(),
               remotePubKey,
               challengeData);
-      final Optional<RequestInfo> embeddedRequestOpt =
-          session.getFirstAwaitRequestInfo().or(session::getFirstSentRequestInfo);
+      final Optional<RequestInfo> embeddedRequestOpt = session.getFirstPendingRequestInfo();
       if (embeddedRequestOpt.isEmpty()) {
-        // Race: the last pending request expired between the hasPendingRequests gate above
-        // and this lookup (session monitor is released between the two synchronized calls).
+        // Race: the last pending request expired between the gate above and this lookup
+        // (session monitor is released between synchronized calls, and HKDF runs in between).
         // Treat the same as a gate miss — ignore the WHOAREYOU rather than throwing into
         // the catch path and calling cancelAllRequests for a benign race. Note: we have NOT
         // yet applied hkdfKeys to the session, so the previous session keys remain valid.
