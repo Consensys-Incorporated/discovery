@@ -74,6 +74,7 @@ dependencies {
   implementation 'com.google.guava:guava'
   implementation 'io.projectreactor:reactor-core'
   implementation 'io.netty:netty-all'
+  compileOnly 'org.jspecify:jspecify'
   implementation 'org.apache.logging.log4j:log4j-api'
   implementation 'org.apache.logging.log4j:log4j-core'
 

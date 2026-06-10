@@ -7,10 +7,11 @@ package org.ethereum.beacon.discovery;
 import static org.ethereum.beacon.discovery.util.Utils.RECOVERABLE_ERRORS_PREDICATE;
 
 import com.google.common.annotations.VisibleForTesting;
-import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.StandardProtocolFamily;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -62,13 +63,12 @@ import org.ethereum.beacon.discovery.storage.KBuckets;
 import org.ethereum.beacon.discovery.storage.LocalNodeRecordStore;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
-import reactor.core.publisher.ReplayProcessor;
+import reactor.core.publisher.Sinks;
 
 public class DiscoveryManagerImpl implements DiscoveryManager {
   private static final Logger LOG = LogManager.getLogger();
 
-  private final ReplayProcessor<NetworkParcel> outgoingMessages = ReplayProcessor.cacheLast();
+  private final Sinks.Many<NetworkParcel> outgoingMessages = Sinks.many().replay().latest();
   private final List<NettyDiscoveryServer> discoveryServers;
   private final Pipeline incomingPipeline = new PipelineImpl();
   private final Pipeline outgoingPipeline = new PipelineImpl();
@@ -133,9 +133,8 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
                 this::requestUpdatedEnr,
                 externalAddressSelector))
         .addHandler(new BadPacketHandler());
-    final FluxSink<NetworkParcel> outgoingSink = outgoingMessages.sink();
     outgoingPipeline
-        .addHandler(new OutgoingParcelHandler(outgoingSink, addressAccessPolicy))
+        .addHandler(new OutgoingParcelHandler(outgoingMessages, addressAccessPolicy))
         .addHandler(new NodeSessionRequestHandler())
         .addHandler(nodeSessionManager)
         .addHandler(new NewTaskHandler())
@@ -163,7 +162,7 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
                     RECOVERABLE_ERRORS_PREDICATE,
                     (err, msg) -> LOG.debug("Error while processing message", err))
                 .subscribe());
-    final Map<InternetProtocolFamily, NioDatagramChannel> channels = new ConcurrentHashMap<>();
+    final Map<StandardProtocolFamily, NioDatagramChannel> channels = new ConcurrentHashMap<>();
     return CompletableFuture.allOf(
             discoveryServers.stream()
                 .map(
@@ -183,11 +182,13 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
                                   // of how the caller configured external address changes.
                                   localNodeRecordStore.onBoundPortResolved(boundAddress);
                                   channels.put(
-                                      InternetProtocolFamily.of(boundAddress.getAddress()),
-                                      channel);
+                                      protocolFamilyOf(boundAddress.getAddress()), channel);
                                 }))
                 .toArray(CompletableFuture<?>[]::new))
-        .thenRun(() -> discoveryClient = new NettyDiscoveryClientImpl(outgoingMessages, channels));
+        .thenRun(
+            () ->
+                discoveryClient =
+                    new NettyDiscoveryClientImpl(outgoingMessages.asFlux(), channels));
   }
 
   @Override
@@ -252,7 +253,7 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
 
   @VisibleForTesting
   public Publisher<NetworkParcel> getOutgoingMessages() {
-    return outgoingMessages;
+    return outgoingMessages.asFlux();
   }
 
   @VisibleForTesting
@@ -273,5 +274,11 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
   @Override
   public Stream<NodeRecord> streamActiveSessions() {
     return nodeSessionManager.streamActiveSessions();
+  }
+
+  private static StandardProtocolFamily protocolFamilyOf(final InetAddress address) {
+    return address instanceof Inet6Address
+        ? StandardProtocolFamily.INET6
+        : StandardProtocolFamily.INET;
   }
 }

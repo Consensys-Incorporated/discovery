@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
+import org.jspecify.annotations.NonNull;
 import reactor.core.Disposable;
 
 public class ErrorHandlingScheduler implements Scheduler {
@@ -84,42 +84,42 @@ public class ErrorHandlingScheduler implements Scheduler {
       super(delegate, timeSupplier);
     }
 
-    @Nonnull
+    @NonNull
     @Override
-    public Disposable schedule(@Nonnull Runnable task) {
+    public Disposable schedule(@NonNull Runnable task) {
       return super.schedule(() -> runAndHandleError(task));
     }
 
-    @Nonnull
+    @NonNull
     @Override
     public Disposable schedule(Runnable task, long delay, TimeUnit unit) {
       return super.schedule(() -> runAndHandleError(task), delay, unit);
     }
 
-    @Nonnull
+    @NonNull
     @Override
     public Disposable schedulePeriodically(
         Runnable task, long initialDelay, long period, TimeUnit unit) {
       return super.schedulePeriodically(() -> runAndHandleError(task), initialDelay, period, unit);
     }
 
-    @Nonnull
+    @NonNull
     @Override
     public Worker createWorker() {
       return new DelegateWorker(super.createWorker()) {
-        @Nonnull
+        @NonNull
         @Override
-        public Disposable schedule(@Nonnull Runnable task) {
+        public Disposable schedule(@NonNull Runnable task) {
           return super.schedule(() -> runAndHandleError(task));
         }
 
-        @Nonnull
+        @NonNull
         @Override
         public Disposable schedule(Runnable task, long delay, TimeUnit unit) {
           return super.schedule(() -> runAndHandleError(task), delay, unit);
         }
 
-        @Nonnull
+        @NonNull
         @Override
         public Disposable schedulePeriodically(
             Runnable task, long initialDelay, long period, TimeUnit unit) {

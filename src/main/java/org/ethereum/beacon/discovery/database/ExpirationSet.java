@@ -37,7 +37,7 @@ public class ExpirationSet<V extends Comparable<V>> {
         Collections.newSetFromMap(
             CacheBuilder.newBuilder()
                 .maximumSize(maxSize)
-                .expireAfterWrite(expirationDelayMillis, TimeUnit.MILLISECONDS)
+                .expireAfterWrite(Duration.ofMillis(expirationDelayMillis))
                 .ticker(
                     new Ticker() {
                       @Override

@@ -12,7 +12,7 @@ import org.ethereum.beacon.discovery.pipeline.AbstractSkippingEnvelopeHandler;
 import org.ethereum.beacon.discovery.pipeline.Envelope;
 import org.ethereum.beacon.discovery.pipeline.Field;
 import org.ethereum.beacon.discovery.pipeline.HandlerUtil;
-import reactor.core.publisher.FluxSink;
+import reactor.core.publisher.Sinks;
 
 /**
  * Looks up for {@link NetworkParcel} in {@link Field#INCOMING} field. If it's found, it shows that
@@ -22,11 +22,11 @@ import reactor.core.publisher.FluxSink;
 public class OutgoingParcelHandler extends AbstractSkippingEnvelopeHandler {
   private static final Logger LOG = LogManager.getLogger(OutgoingParcelHandler.class);
 
-  private final FluxSink<NetworkParcel> outgoingSink;
+  private final Sinks.Many<NetworkParcel> outgoingSink;
   private final AddressAccessPolicy addressAccessPolicy;
 
   public OutgoingParcelHandler(
-      FluxSink<NetworkParcel> outgoingSink, final AddressAccessPolicy addressAccessPolicy) {
+      Sinks.Many<NetworkParcel> outgoingSink, final AddressAccessPolicy addressAccessPolicy) {
     this.outgoingSink = outgoingSink;
     this.addressAccessPolicy = addressAccessPolicy;
   }
@@ -50,7 +50,7 @@ public class OutgoingParcelHandler extends AbstractSkippingEnvelopeHandler {
         LOG.trace(
             "Dropping outgoing packet to disallowed destination: {}", parcel.getDestination());
       } else {
-        outgoingSink.next(parcel);
+        outgoingSink.tryEmitNext(parcel);
         envelope.remove(Field.INCOMING);
       }
     }

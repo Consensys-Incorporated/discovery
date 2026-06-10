@@ -14,16 +14,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
-import reactor.core.publisher.ReplayProcessor;
+import reactor.core.publisher.Sinks;
 
 public class PipelineImpl implements Pipeline {
   private static final Logger LOG = LogManager.getLogger();
 
   private final List<EnvelopeHandler> envelopeHandlers = new ArrayList<>();
   private final AtomicBoolean started = new AtomicBoolean(false);
-  private Flux<Envelope> pipeline = ReplayProcessor.cacheLast();
-  private final FluxSink<Envelope> pipelineSink = ((ReplayProcessor<Envelope>) pipeline).sink();
+  private final Sinks.Many<Envelope> pipelineSinks = Sinks.many().replay().latest();
+  private Flux<Envelope> pipeline = pipelineSinks.asFlux();
 
   @Override
   public synchronized Pipeline build() {
@@ -55,13 +54,16 @@ public class PipelineImpl implements Pipeline {
     if (!started.get()) {
       throw new RuntimeException("You should build pipeline first");
     }
+    final Envelope envelope;
     if (!(object instanceof Envelope)) {
-      Envelope envelope = new Envelope();
+      envelope = new Envelope();
       envelope.put(INCOMING, object);
-      pipelineSink.next(envelope);
     } else {
-      pipelineSink.next((Envelope) object);
+      envelope = (Envelope) object;
     }
+    // retry on FAIL_NON_SERIALIZED to handle concurrent push from multiple event-loop threads
+    pipelineSinks.emitNext(
+        envelope, (signalType, emitResult) -> emitResult == Sinks.EmitResult.FAIL_NON_SERIALIZED);
   }
 
   @Override

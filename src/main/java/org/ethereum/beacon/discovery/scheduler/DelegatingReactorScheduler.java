@@ -6,7 +6,7 @@ package org.ethereum.beacon.discovery.scheduler;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
-import javax.annotation.Nonnull;
+import org.jspecify.annotations.NonNull;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Scheduler;
 
@@ -20,19 +20,19 @@ public class DelegatingReactorScheduler implements Scheduler {
     this.timeSupplier = timeSupplier;
   }
 
-  @Nonnull
+  @NonNull
   @Override
-  public Disposable schedule(@Nonnull Runnable task) {
+  public Disposable schedule(@NonNull Runnable task) {
     return delegate.schedule(task);
   }
 
-  @Nonnull
+  @NonNull
   @Override
   public Disposable schedule(Runnable task, long delay, TimeUnit unit) {
     return delegate.schedule(task, delay, unit);
   }
 
-  @Nonnull
+  @NonNull
   @Override
   public Disposable schedulePeriodically(
       Runnable task, long initialDelay, long period, TimeUnit unit) {
@@ -44,7 +44,7 @@ public class DelegatingReactorScheduler implements Scheduler {
     return unit.convert(timeSupplier.get(), TimeUnit.MILLISECONDS);
   }
 
-  @Nonnull
+  @NonNull
   @Override
   public Worker createWorker() {
     return delegate.createWorker();
@@ -55,6 +55,7 @@ public class DelegatingReactorScheduler implements Scheduler {
     delegate.dispose();
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public void start() {
     delegate.start();
@@ -72,19 +73,19 @@ public class DelegatingReactorScheduler implements Scheduler {
       this.delegate = delegate;
     }
 
-    @Nonnull
+    @NonNull
     @Override
-    public Disposable schedule(@Nonnull Runnable task) {
+    public Disposable schedule(@NonNull Runnable task) {
       return delegate.schedule(task);
     }
 
-    @Nonnull
+    @NonNull
     @Override
     public Disposable schedule(Runnable task, long delay, TimeUnit unit) {
       return delegate.schedule(task, delay, unit);
     }
 
-    @Nonnull
+    @NonNull
     @Override
     public Disposable schedulePeriodically(
         Runnable task, long initialDelay, long period, TimeUnit unit) {

@@ -9,13 +9,10 @@ import org.reactivestreams.Processor;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxProcessor;
-import reactor.core.publisher.FluxSink;
-import reactor.core.publisher.ReplayProcessor;
+import reactor.core.publisher.Sinks;
 
 public class SimpleProcessor<T> implements Processor<T, T> {
-  FluxProcessor<T, T> subscriber;
-  FluxSink<T> sink;
+  Sinks.Many<T> sinks;
   Flux<T> publisher;
   boolean subscribed;
 
@@ -29,10 +26,8 @@ public class SimpleProcessor<T> implements Processor<T, T> {
   }
 
   public SimpleProcessor(reactor.core.scheduler.Scheduler scheduler, String name) {
-    ReplayProcessor<T> processor = ReplayProcessor.cacheLast();
-    subscriber = processor;
-    sink = subscriber.sink();
-    publisher = Flux.from(processor).publishOn(scheduler).onBackpressureError().name(name);
+    sinks = Sinks.many().replay().latest();
+    publisher = sinks.asFlux().publishOn(scheduler).onBackpressureError().name(name);
   }
 
   @SuppressWarnings({"rawtypes"})
@@ -53,7 +48,7 @@ public class SimpleProcessor<T> implements Processor<T, T> {
     publisher =
         publisher.doOnCancel(
             () -> {
-              if (subscribed && !subscriber.hasDownstreams()) {
+              if (subscribed && sinks.currentSubscriberCount() == 0) {
                 subscribed = false;
                 handler.run();
               }
@@ -68,21 +63,21 @@ public class SimpleProcessor<T> implements Processor<T, T> {
 
   @Override
   public void onSubscribe(Subscription subscription) {
-    subscriber.onSubscribe(subscription);
+    subscription.request(Long.MAX_VALUE);
   }
 
   @Override
   public void onNext(T t) {
-    sink.next(t);
+    sinks.tryEmitNext(t);
   }
 
   @Override
   public void onError(Throwable throwable) {
-    sink.error(throwable);
+    sinks.tryEmitError(throwable);
   }
 
   @Override
   public void onComplete() {
-    sink.complete();
+    sinks.tryEmitComplete();
   }
 }
