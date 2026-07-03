@@ -8,6 +8,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
@@ -18,6 +19,8 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.bytes.MutableBytes;
 import org.apache.tuweni.units.bigints.UInt64;
 import reactor.core.Exceptions;
+import reactor.core.publisher.SignalType;
+import reactor.core.publisher.Sinks;
 
 public class Utils {
 
@@ -120,5 +123,22 @@ public class Utils {
 
   public static boolean isPortValid(final int port) {
     return (port >= 0 && port <= 65535);
+  }
+
+  /**
+   * Emits {@code value} into {@code sink}, retrying on {@link Sinks.EmitResult#FAIL_NON_SERIALIZED}
+   * (raised when multiple threads push into the sink concurrently) for up to {@code retryTimeout}
+   * before giving up. Unlike {@link Sinks.Many#emitNext}, this never throws; the final {@link
+   * Sinks.EmitResult} is always returned so the caller can decide how to handle a failure.
+   */
+  public static <T> Sinks.EmitResult emitNextWithRetry(
+      Sinks.Many<T> sink, T value, Duration retryTimeout) {
+    final Sinks.EmitFailureHandler retryHandler =
+        Sinks.EmitFailureHandler.busyLooping(retryTimeout);
+    Sinks.EmitResult result;
+    do {
+      result = sink.tryEmitNext(value);
+    } while (result.isFailure() && retryHandler.onEmitFailure(SignalType.ON_NEXT, result));
+    return result;
   }
 }

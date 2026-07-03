@@ -4,9 +4,11 @@
 
 package org.ethereum.beacon.discovery.pipeline.handler;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -50,6 +52,7 @@ class OutgoingParcelHandlerTest {
 
   @Test
   void shouldSendPacketsToAllowedHosts() {
+    when(outgoingSink.tryEmitNext(any())).thenReturn(Sinks.EmitResult.OK);
     final Envelope envelope = new Envelope();
     final NetworkParcelV5 parcel = new NetworkParcelV5(PACKET, ALLOWED_ADDRESS);
     envelope.put(Field.INCOMING, parcel);

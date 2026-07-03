@@ -7,11 +7,13 @@ package org.ethereum.beacon.discovery.pipeline;
 import static org.ethereum.beacon.discovery.pipeline.Field.INCOMING;
 import static org.ethereum.beacon.discovery.util.Utils.RECOVERABLE_ERRORS_PREDICATE;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.ethereum.beacon.discovery.util.Utils;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -61,9 +63,13 @@ public class PipelineImpl implements Pipeline {
     } else {
       envelope = (Envelope) object;
     }
-    // retry on FAIL_NON_SERIALIZED to handle concurrent push from multiple event-loop threads
-    pipelineSinks.emitNext(
-        envelope, (signalType, emitResult) -> emitResult == Sinks.EmitResult.FAIL_NON_SERIALIZED);
+    // retry (bounded) on FAIL_NON_SERIALIZED to handle concurrent push from multiple
+    // event-loop threads
+    final Sinks.EmitResult result =
+        Utils.emitNextWithRetry(pipelineSinks, envelope, Duration.ofSeconds(1));
+    if (result.isFailure()) {
+      LOG.error("Failed to push envelope {} into pipeline: {}", envelope.getIdString(), result);
+    }
   }
 
   @Override

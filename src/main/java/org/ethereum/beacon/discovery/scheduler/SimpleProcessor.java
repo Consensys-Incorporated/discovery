@@ -5,6 +5,8 @@
 package org.ethereum.beacon.discovery.scheduler;
 
 // import org.ethereum.beacon.schedulers.Scheduler;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Processor;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
@@ -12,6 +14,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
 public class SimpleProcessor<T> implements Processor<T, T> {
+  private static final Logger LOG = LogManager.getLogger(SimpleProcessor.class);
   Sinks.Many<T> sinks;
   Flux<T> publisher;
   boolean subscribed;
@@ -68,16 +71,25 @@ public class SimpleProcessor<T> implements Processor<T, T> {
 
   @Override
   public void onNext(T t) {
-    sinks.tryEmitNext(t);
+    final Sinks.EmitResult result = sinks.tryEmitNext(t);
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit next value {}: {}", t, result);
+    }
   }
 
   @Override
   public void onError(Throwable throwable) {
-    sinks.tryEmitError(throwable);
+    final Sinks.EmitResult result = sinks.tryEmitError(throwable);
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit error {}: {}", throwable, result);
+    }
   }
 
   @Override
   public void onComplete() {
-    sinks.tryEmitComplete();
+    final Sinks.EmitResult result = sinks.tryEmitComplete();
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit completion signal: {}", result);
+    }
   }
 }

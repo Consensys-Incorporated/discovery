@@ -28,7 +28,10 @@ public class IncomingMessageSink extends SimpleChannelInboundHandler<Envelope> {
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, Envelope msg) {
     LOG.trace(() -> String.format("Incoming packet %s in session %s", msg, ctx));
-    messageSink.tryEmitNext(msg);
+    final Sinks.EmitResult result = messageSink.tryEmitNext(msg);
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit incoming packet {} in session {}: {}", msg, ctx, result);
+    }
   }
 
   @Override
