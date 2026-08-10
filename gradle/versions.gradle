@@ -25,7 +25,6 @@ dependencyManagement {
     dependency 'org.assertj:assertj-core:3.26.0'
     dependency 'org.mockito:mockito-core:5.12.0'
 
-    dependency 'io.vertx:vertx-core:4.5.9'
     dependencySet(group: 'io.consensys.tuweni', version: '2.7.0') {
       entry 'tuweni-bytes'
       entry 'tuweni-crypto'
