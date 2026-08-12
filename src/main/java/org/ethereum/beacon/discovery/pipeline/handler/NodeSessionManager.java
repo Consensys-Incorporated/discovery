@@ -131,7 +131,9 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
       removedSession.markInactive();
       // Clean up ALL nonce mappings for this session. Multiple nonces may be registered when
       // several packets were sent before the handshake completed (see onSessionLastNonceUpdate).
-      lastNonceToSession.values().removeIf(s -> s.equals(removedSession));
+      // Identity comparison is intentional: removedSession is a specific instance, and we must
+      // not match a different (e.g. replaced) session that could otherwise compare equal.
+      lastNonceToSession.values().removeIf(s -> s == removedSession);
     }
   }
 
