@@ -65,9 +65,23 @@ public class NodeRecordBuilder {
       final int udpPort,
       final int tcpPort,
       final Optional<Integer> quicPort) {
+    return address(ipAddress, udpPort, Optional.of(tcpPort), quicPort);
+  }
+
+  /**
+   * Adds the address fields for the given IP. The {@code tcp}/{@code tcp6} and {@code quic}/{@code
+   * quic6} fields are only added when the corresponding port is present, so a node that does not
+   * listen on TCP (for example a QUIC-only node) can build a record that does not advertise a TCP
+   * port.
+   */
+  public NodeRecordBuilder address(
+      final String ipAddress,
+      final int udpPort,
+      final Optional<Integer> tcpPort,
+      final Optional<Integer> quicPort) {
     try {
       final InetAddress inetAddress = InetAddress.getByName(ipAddress);
-      addFieldsForAddress(fields, inetAddress, udpPort, Optional.of(tcpPort), quicPort);
+      addFieldsForAddress(fields, inetAddress, udpPort, tcpPort, quicPort);
     } catch (UnknownHostException e) {
       throw new IllegalArgumentException("Unable to resolve address: " + ipAddress);
     }
