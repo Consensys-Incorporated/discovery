@@ -27,7 +27,8 @@ public class TimeControllerImpl implements TimeController {
   }
 
   TreeMultimap<Long, OrderedTask> tasks =
-      TreeMultimap.create(Comparator.naturalOrder(), Comparator.comparing(OrderedTask::getOrder));
+      TreeMultimap.create(
+          Comparator.naturalOrder(), Comparator.comparingLong(OrderedTask::getOrder));
   long curTime;
   long timeShift;
 

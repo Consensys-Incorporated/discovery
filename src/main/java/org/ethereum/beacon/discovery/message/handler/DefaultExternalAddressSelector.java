@@ -113,7 +113,7 @@ public class DefaultExternalAddressSelector implements ExternalAddressSelector {
     return reportedAddresses.entrySet().stream()
         .filter(entry -> (entry.getKey().getAddress() instanceof Inet4Address))
         .filter(entry -> entry.getValue().getReportCount() >= MIN_CONFIRMATIONS)
-        .max(Map.Entry.comparingByValue(Comparator.comparing(ReportData::getReportCount)))
+        .max(Map.Entry.comparingByValue(Comparator.comparingInt(ReportData::getReportCount)))
         .map(Map.Entry::getKey);
   }
 
@@ -121,7 +121,7 @@ public class DefaultExternalAddressSelector implements ExternalAddressSelector {
     return reportedAddresses.entrySet().stream()
         .filter(entry -> (entry.getKey().getAddress() instanceof Inet6Address))
         .filter(entry -> entry.getValue().getReportCount() >= MIN_CONFIRMATIONS)
-        .max(Map.Entry.comparingByValue(Comparator.comparing(ReportData::getReportCount)))
+        .max(Map.Entry.comparingByValue(Comparator.comparingInt(ReportData::getReportCount)))
         .map(Map.Entry::getKey);
   }
 

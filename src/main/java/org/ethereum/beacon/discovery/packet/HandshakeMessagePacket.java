@@ -54,8 +54,6 @@ public interface HandshakeMessagePacket extends MessagePacket<HandshakeAuthData>
   interface HandshakeAuthData extends AuthData {
 
     /**
-     *
-     *
      * <pre>
      * id-signature-text  = "discovery v5 identity proof"
      * id-signature-input = id-signature-text || challenge-data || ephemeral-pubkey || node-id-B
