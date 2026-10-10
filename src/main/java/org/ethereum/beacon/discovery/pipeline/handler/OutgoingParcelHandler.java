@@ -4,7 +4,6 @@
 
 package org.ethereum.beacon.discovery.pipeline.handler;
 
-import java.time.Duration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ethereum.beacon.discovery.AddressAccessPolicy;
@@ -53,7 +52,7 @@ public class OutgoingParcelHandler extends AbstractSkippingEnvelopeHandler {
             "Dropping outgoing packet to disallowed destination: {}", parcel.getDestination());
       } else {
         final Sinks.EmitResult result =
-            Utils.emitNextWithRetry(outgoingSink, parcel, Duration.ofSeconds(1));
+            Utils.emitNextWithRetry(outgoingSink, parcel, Utils.EMIT_RETRY_TIMEOUT);
         if (result.isSuccess()) {
           envelope.remove(Field.INCOMING);
         } else {

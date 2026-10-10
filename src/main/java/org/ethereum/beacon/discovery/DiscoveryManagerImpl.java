@@ -9,7 +9,6 @@ import static org.ethereum.beacon.discovery.util.Utils.RECOVERABLE_ERRORS_PREDIC
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.util.Collection;
@@ -61,6 +60,7 @@ import org.ethereum.beacon.discovery.schema.NodeRecordFactory;
 import org.ethereum.beacon.discovery.schema.NodeSession;
 import org.ethereum.beacon.discovery.storage.KBuckets;
 import org.ethereum.beacon.discovery.storage.LocalNodeRecordStore;
+import org.ethereum.beacon.discovery.util.Utils;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -182,7 +182,7 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
                                   // of how the caller configured external address changes.
                                   localNodeRecordStore.onBoundPortResolved(boundAddress);
                                   channels.put(
-                                      protocolFamilyOf(boundAddress.getAddress()), channel);
+                                      Utils.protocolFamilyOf(boundAddress.getAddress()), channel);
                                 }))
                 .toArray(CompletableFuture<?>[]::new))
         .thenRun(
@@ -274,11 +274,5 @@ public class DiscoveryManagerImpl implements DiscoveryManager {
   @Override
   public Stream<NodeRecord> streamActiveSessions() {
     return nodeSessionManager.streamActiveSessions();
-  }
-
-  private static StandardProtocolFamily protocolFamilyOf(final InetAddress address) {
-    return address instanceof Inet6Address
-        ? StandardProtocolFamily.INET6
-        : StandardProtocolFamily.INET;
   }
 }

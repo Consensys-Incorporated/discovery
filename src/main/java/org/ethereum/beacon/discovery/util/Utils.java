@@ -8,6 +8,9 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.math.BigInteger;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.StandardProtocolFamily;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -23,6 +26,13 @@ import reactor.core.publisher.SignalType;
 import reactor.core.publisher.Sinks;
 
 public class Utils {
+
+  /**
+   * Upper bound for retrying a sink emission that failed with {@link
+   * Sinks.EmitResult#FAIL_NON_SERIALIZED}. Kept short because {@link #emitNextWithRetry} busy-loops
+   * on the calling thread, which may be a Netty event-loop thread.
+   */
+  public static final Duration EMIT_RETRY_TIMEOUT = Duration.ofMillis(100);
 
   /**
    * Reactor treats a number of Throwable as 'fatal' by default including StackOverflowError and
@@ -132,7 +142,9 @@ public class Utils {
    * Sinks.EmitResult} is always returned so the caller can decide how to handle a failure.
    */
   public static <T> Sinks.EmitResult emitNextWithRetry(
-      Sinks.Many<T> sink, T value, Duration retryTimeout) {
+      final Sinks.Many<T> sink, final T value, final Duration retryTimeout) {
+    checkNotNull(sink, "sink");
+    checkNotNull(retryTimeout, "retryTimeout");
     final Sinks.EmitFailureHandler retryHandler =
         Sinks.EmitFailureHandler.busyLooping(retryTimeout);
     Sinks.EmitResult result;
@@ -140,5 +152,15 @@ public class Utils {
       result = sink.tryEmitNext(value);
     } while (result.isFailure() && retryHandler.onEmitFailure(SignalType.ON_NEXT, result));
     return result;
+  }
+
+  /**
+   * Maps an address to the IP protocol family a datagram channel must be bound to in order to reach
+   * it.
+   */
+  public static StandardProtocolFamily protocolFamilyOf(final InetAddress address) {
+    return address instanceof Inet6Address
+        ? StandardProtocolFamily.INET6
+        : StandardProtocolFamily.INET;
   }
 }

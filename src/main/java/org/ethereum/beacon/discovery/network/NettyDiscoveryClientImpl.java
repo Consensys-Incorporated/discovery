@@ -7,14 +7,13 @@ package org.ethereum.beacon.discovery.network;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
+import org.ethereum.beacon.discovery.util.Utils;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 
@@ -48,7 +47,8 @@ public class NettyDiscoveryClientImpl implements DiscoveryClient {
   public void send(final Bytes data, final InetSocketAddress destination) {
     final DatagramPacket packet =
         new DatagramPacket(Unpooled.copiedBuffer(data.toArray()), destination);
-    final NioDatagramChannel channel = channels.get(protocolFamilyOf(destination.getAddress()));
+    final NioDatagramChannel channel =
+        channels.get(Utils.protocolFamilyOf(destination.getAddress()));
     if (channel == null) {
       LOG.trace(
           () -> String.format("Dropping packet %s because of IP version incompatibility", packet));
@@ -57,11 +57,5 @@ public class NettyDiscoveryClientImpl implements DiscoveryClient {
     LOG.trace(() -> String.format("Sending packet %s", packet));
     channel.write(packet);
     channel.flush();
-  }
-
-  private static StandardProtocolFamily protocolFamilyOf(final InetAddress address) {
-    return address instanceof Inet6Address
-        ? StandardProtocolFamily.INET6
-        : StandardProtocolFamily.INET;
   }
 }

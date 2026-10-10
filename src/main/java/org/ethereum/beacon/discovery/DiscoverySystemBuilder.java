@@ -14,7 +14,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.time.Clock;
@@ -47,6 +46,7 @@ import org.ethereum.beacon.discovery.storage.LocalNodeRecordStore;
 import org.ethereum.beacon.discovery.storage.NewAddressHandler;
 import org.ethereum.beacon.discovery.storage.NodeRecordListener;
 import org.ethereum.beacon.discovery.task.DiscoveryTaskManager;
+import org.ethereum.beacon.discovery.util.Utils;
 
 public class DiscoverySystemBuilder {
 
@@ -189,19 +189,13 @@ public class DiscoverySystemBuilder {
       final Set<StandardProtocolFamily> ipFamilies =
           listenAddresses.stream()
               .map(InetSocketAddress::getAddress)
-              .map(DiscoverySystemBuilder::protocolFamilyOf)
+              .map(Utils::protocolFamilyOf)
               .collect(Collectors.toSet());
       if (ipFamilies.size() != 2) {
         throw new IllegalArgumentException(
             String.format("Expected an IPv4 and an IPv6 address but only %s was set", ipFamilies));
       }
     }
-  }
-
-  private static StandardProtocolFamily protocolFamilyOf(final InetAddress address) {
-    return address instanceof Inet6Address
-        ? StandardProtocolFamily.INET6
-        : StandardProtocolFamily.INET;
   }
 
   private void createDefaults() {
