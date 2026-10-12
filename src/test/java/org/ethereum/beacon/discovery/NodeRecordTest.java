@@ -12,9 +12,11 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
@@ -127,6 +129,118 @@ public class NodeRecordTest {
     assertNotEquals(nodeRecord0.getSignature(), nodeRecord1.getSignature());
     nodeRecord1.setSignature(nodeRecord0.getSignature());
     assertFalse(nodeRecord1.isValid());
+  }
+
+  @Test
+  public void shouldBuildRecordWithoutTcpPort() {
+    Random rnd = new Random(SEED);
+    KeyPair keyPair = Functions.randomKeyPair(rnd);
+    NodeRecord nodeRecord =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("127.0.0.1", 30303, Optional.empty(), Optional.empty())
+            .signer(new DefaultSigner(keyPair.secretKey()))
+            .build();
+    assertTrue(nodeRecord.isValid());
+    assertTrue(nodeRecord.containsKey(EnrField.IP_V4));
+    assertTrue(nodeRecord.containsKey(EnrField.UDP));
+    assertFalse(nodeRecord.containsKey(EnrField.TCP));
+    assertFalse(nodeRecord.containsKey(EnrField.QUIC));
+    assertEquals(
+        Optional.of(new InetSocketAddress("127.0.0.1", 30303)), nodeRecord.getUdpAddress());
+    assertEquals(Optional.empty(), nodeRecord.getTcpAddress());
+    assertEquals(Optional.empty(), nodeRecord.getQuicAddress());
+  }
+
+  @Test
+  public void shouldBuildIpV6RecordWithoutTcpPort() {
+    Random rnd = new Random(SEED);
+    KeyPair keyPair = Functions.randomKeyPair(rnd);
+    NodeRecord nodeRecord =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("::1", 30303, Optional.empty(), Optional.empty())
+            .signer(new DefaultSigner(keyPair.secretKey()))
+            .build();
+    assertTrue(nodeRecord.isValid());
+    assertTrue(nodeRecord.containsKey(EnrField.IP_V6));
+    assertTrue(nodeRecord.containsKey(EnrField.UDP_V6));
+    assertFalse(nodeRecord.containsKey(EnrField.TCP_V6));
+    assertFalse(nodeRecord.containsKey(EnrField.QUIC_V6));
+    assertEquals(Optional.of(new InetSocketAddress("::1", 30303)), nodeRecord.getUdp6Address());
+    assertEquals(Optional.empty(), nodeRecord.getTcp6Address());
+    assertEquals(Optional.empty(), nodeRecord.getQuic6Address());
+  }
+
+  @Test
+  public void shouldBuildRecordWithOnlyQuicPort() {
+    Random rnd = new Random(SEED);
+    KeyPair keyPair = Functions.randomKeyPair(rnd);
+    NodeRecord nodeRecord =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("127.0.0.1", 30303, Optional.empty(), Optional.of(9001))
+            .signer(new DefaultSigner(keyPair.secretKey()))
+            .build();
+    assertTrue(nodeRecord.isValid());
+    assertFalse(nodeRecord.containsKey(EnrField.TCP));
+    assertEquals(9001, nodeRecord.get(EnrField.QUIC));
+    assertEquals(
+        Optional.of(new InetSocketAddress("127.0.0.1", 9001)), nodeRecord.getQuicAddress());
+    assertEquals(Optional.empty(), nodeRecord.getTcpAddress());
+
+    // round-trips through serialization
+    NodeRecord decoded = NODE_RECORD_FACTORY.fromBytes(nodeRecord.serialize());
+    assertTrue(decoded.isValid());
+    assertEquals(nodeRecord.getQuicAddress(), decoded.getQuicAddress());
+    assertEquals(Optional.empty(), decoded.getTcpAddress());
+  }
+
+  @Test
+  public void shouldBuildIpV6RecordWithOnlyQuicPort() {
+    Random rnd = new Random(SEED);
+    KeyPair keyPair = Functions.randomKeyPair(rnd);
+    NodeRecord nodeRecord =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("::1", 30303, Optional.empty(), Optional.of(9001))
+            .signer(new DefaultSigner(keyPair.secretKey()))
+            .build();
+    assertTrue(nodeRecord.isValid());
+    assertFalse(nodeRecord.containsKey(EnrField.TCP_V6));
+    assertEquals(Optional.of(new InetSocketAddress("::1", 9001)), nodeRecord.getQuic6Address());
+    assertEquals(Optional.empty(), nodeRecord.getTcp6Address());
+  }
+
+  @Test
+  public void existingAddressOverloadsShouldMatchOptionalOverload() {
+    Random rnd = new Random(SEED);
+    KeyPair keyPair = Functions.randomKeyPair(rnd);
+    DefaultSigner signer = new DefaultSigner(keyPair.secretKey());
+
+    NodeRecord viaInt =
+        new NodeRecordBuilder().seq(0).address("127.0.0.1", 30303, 30304).signer(signer).build();
+    NodeRecord viaOptional =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("127.0.0.1", 30303, Optional.of(30304), Optional.empty())
+            .signer(signer)
+            .build();
+    assertEquals(viaInt.serialize(), viaOptional.serialize());
+
+    NodeRecord viaIntWithQuic =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("127.0.0.1", 30303, 30304, 9001)
+            .signer(signer)
+            .build();
+    NodeRecord viaOptionalWithQuic =
+        new NodeRecordBuilder()
+            .seq(0)
+            .address("127.0.0.1", 30303, Optional.of(30304), Optional.of(9001))
+            .signer(signer)
+            .build();
+    assertEquals(viaIntWithQuic.serialize(), viaOptionalWithQuic.serialize());
   }
 
   @Test
