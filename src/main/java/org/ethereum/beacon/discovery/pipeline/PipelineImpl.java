@@ -9,15 +9,12 @@ import static org.ethereum.beacon.discovery.util.Utils.RECOVERABLE_ERRORS_PREDIC
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Sinks;
+import reactor.core.publisher.FluxSink;
 
 public class PipelineImpl implements Pipeline {
   private static final Logger LOG = LogManager.getLogger();
@@ -25,19 +22,18 @@ public class PipelineImpl implements Pipeline {
   private final List<EnvelopeHandler> envelopeHandlers = new ArrayList<>();
   private final AtomicBoolean started = new AtomicBoolean(false);
   // Handlers run synchronously on the thread that emits into the sink, and pushes can arrive
-  // concurrently (IPv4/IPv6 event loops, API callers, scheduler). Reactor's serialized sinks
-  // would reject a push made while another thread is still inside the handler chain
-  // (FAIL_NON_SERIALIZED), so we serialize ourselves: pushes are queued and drained by whichever
-  // thread currently owns the work-in-progress counter, which also makes re-entrant pushes from
-  // handlers safe. The sink itself is therefore only ever emitted into from one thread at a time.
-  private final Sinks.Many<Envelope> pipelineSinks = Sinks.unsafe().many().replay().latest();
-  private final Queue<Envelope> pending = new ConcurrentLinkedQueue<>();
-  private final AtomicInteger wip = new AtomicInteger();
-  private Flux<Envelope> pipeline = pipelineSinks.asFlux();
+  // concurrently (IPv4/IPv6 event loops, API callers, scheduler) or re-entrantly from a handler.
+  // Flux.create hands out a serialized FluxSink that queues such emissions and drains them in
+  // order, whereas Sinks.many() would reject them with FAIL_NON_SERIALIZED. The source is shared
+  // through replay(1).autoConnect(1) so that late subscribers (getOutgoingEnvelopes) see the
+  // latest envelope without creating a second sink.
+  private volatile FluxSink<Envelope> pipelineSink;
+
+  private Flux<Envelope> pipeline =
+      Flux.<Envelope>create(sink -> pipelineSink = sink).replay(1).autoConnect(1);
 
   @Override
   public synchronized Pipeline build() {
-    started.set(true);
     for (EnvelopeHandler handler : envelopeHandlers) {
       pipeline =
           pipeline.doOnNext(
@@ -57,6 +53,9 @@ public class PipelineImpl implements Pipeline {
             RECOVERABLE_ERRORS_PREDICATE,
             (err, msg) -> LOG.debug("Error while processing message: " + err))
         .subscribe();
+    // subscribing above connects the source and captures pipelineSink synchronously, so pushes
+    // are only allowed from this point on
+    started.set(true);
     return this;
   }
 
@@ -72,32 +71,7 @@ public class PipelineImpl implements Pipeline {
     } else {
       envelope = (Envelope) object;
     }
-    pending.offer(envelope);
-    if (wip.getAndIncrement() != 0) {
-      // another thread is draining and will pick this envelope up
-      return;
-    }
-    int missed = 1;
-    do {
-      Envelope next;
-      while ((next = pending.poll()) != null) {
-        emit(next);
-      }
-      missed = wip.addAndGet(-missed);
-    } while (missed != 0);
-  }
-
-  private void emit(final Envelope envelope) {
-    try {
-      final Sinks.EmitResult result = pipelineSinks.tryEmitNext(envelope);
-      if (result.isFailure()) {
-        LOG.error("Failed to push envelope {} into pipeline: {}", envelope.getIdString(), result);
-      }
-    } catch (final Throwable t) {
-      // never let an emission failure escape the drain loop, or the pipeline would stall forever
-      LOG.error(
-          "Unexpected error while pushing envelope {} into pipeline", envelope.getIdString(), t);
-    }
+    pipelineSink.next(envelope);
   }
 
   @Override

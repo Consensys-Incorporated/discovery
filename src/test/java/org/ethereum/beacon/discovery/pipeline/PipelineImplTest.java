@@ -11,6 +11,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 
 class PipelineImplTest {
 
@@ -90,5 +91,38 @@ class PipelineImplTest {
     pipeline.push("after");
 
     assertThat(received).containsExactly("after");
+  }
+
+  @Test
+  void shouldDeliverEnvelopesToAdditionalSubscribers() {
+    final List<String> received = new CopyOnWriteArrayList<>();
+    final List<String> observed = new CopyOnWriteArrayList<>();
+    final PipelineImpl pipeline = new PipelineImpl();
+    pipeline.addHandler(envelope -> received.add((String) envelope.get(Field.INCOMING)));
+    pipeline.build();
+    Flux.from(pipeline.getOutgoingEnvelopes())
+        .subscribe(envelope -> observed.add((String) envelope.get(Field.INCOMING)));
+
+    pipeline.push("a");
+    pipeline.push("b");
+
+    assertThat(received).contains("a", "b");
+    assertThat(observed).containsExactly("a", "b");
+  }
+
+  @Test
+  void shouldReplayLatestEnvelopeToLateSubscriber() {
+    final List<String> observed = new CopyOnWriteArrayList<>();
+    final PipelineImpl pipeline = new PipelineImpl();
+    pipeline.addHandler(envelope -> {});
+    pipeline.build();
+
+    pipeline.push("a");
+    pipeline.push("b");
+    Flux.from(pipeline.getOutgoingEnvelopes())
+        .subscribe(envelope -> observed.add((String) envelope.get(Field.INCOMING)));
+    pipeline.push("c");
+
+    assertThat(observed).containsExactly("b", "c");
   }
 }
