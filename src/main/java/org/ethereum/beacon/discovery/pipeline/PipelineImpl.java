@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
+import reactor.core.publisher.Sinks;
 
 public class PipelineImpl implements Pipeline {
   private static final Logger LOG = LogManager.getLogger();
@@ -23,17 +24,28 @@ public class PipelineImpl implements Pipeline {
   private final AtomicBoolean started = new AtomicBoolean(false);
   // Handlers run synchronously on the thread that emits into the sink, and pushes can arrive
   // concurrently (IPv4/IPv6 event loops, API callers, scheduler) or re-entrantly from a handler.
-  // Flux.create hands out a serialized FluxSink that queues such emissions and drains them in
-  // order, whereas Sinks.many() would reject them with FAIL_NON_SERIALIZED. The source is shared
-  // through replay(1).autoConnect(1) so that late subscribers (getOutgoingEnvelopes) see the
-  // latest envelope without creating a second sink.
+  // Two Reactor pieces give the semantics the old ReplayProcessor.cacheLast().sink() had:
+  //  - Flux.create hands out a serialized FluxSink that queues such emissions and drains them in
+  //    order (Sinks.many() would reject them with FAIL_NON_SERIALIZED), so the replay sink below
+  //    is only ever emitted into from one thread at a time;
+  //  - the replay sink multicasts to every subscriber at that subscriber's own pace, so a slow
+  //    getOutgoingEnvelopes() observer cannot throttle the internal processing subscription the
+  //    way demand-coordinating operators such as replay(1) or publish() would.
+  private final Sinks.Many<Envelope> envelopes = Sinks.many().replay().latest();
   private volatile FluxSink<Envelope> pipelineSink;
-
-  private Flux<Envelope> pipeline =
-      Flux.<Envelope>create(sink -> pipelineSink = sink).replay(1).autoConnect(1);
+  private Flux<Envelope> pipeline = envelopes.asFlux();
 
   @Override
   public synchronized Pipeline build() {
+    Flux.<Envelope>create(sink -> pipelineSink = sink)
+        .subscribe(
+            envelope -> {
+              final Sinks.EmitResult result = envelopes.tryEmitNext(envelope);
+              if (result.isFailure()) {
+                LOG.error(
+                    "Failed to push envelope {} into pipeline: {}", envelope.getIdString(), result);
+              }
+            });
     for (EnvelopeHandler handler : envelopeHandlers) {
       pipeline =
           pipeline.doOnNext(
@@ -53,8 +65,8 @@ public class PipelineImpl implements Pipeline {
             RECOVERABLE_ERRORS_PREDICATE,
             (err, msg) -> LOG.debug("Error while processing message: " + err))
         .subscribe();
-    // subscribing above connects the source and captures pipelineSink synchronously, so pushes
-    // are only allowed from this point on
+    // the Flux.create subscription above captured pipelineSink synchronously, so pushes are only
+    // allowed from this point on
     started.set(true);
     return this;
   }

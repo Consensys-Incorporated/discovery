@@ -11,6 +11,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.reactivestreams.Subscription;
+import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
 
 class PipelineImplTest {
@@ -124,5 +126,35 @@ class PipelineImplTest {
     pipeline.push("c");
 
     assertThat(observed).containsExactly("b", "c");
+  }
+
+  @Test
+  void shouldKeepProcessingWhenAnObserverStopsRequesting() {
+    final List<String> received = new CopyOnWriteArrayList<>();
+    final List<String> observed = new CopyOnWriteArrayList<>();
+    final PipelineImpl pipeline = new PipelineImpl();
+    pipeline.addHandler(envelope -> received.add((String) envelope.get(Field.INCOMING)));
+    pipeline.build();
+    // an observer that only ever requests a single envelope must not throttle the pipeline
+    Flux.from(pipeline.getOutgoingEnvelopes())
+        .subscribe(
+            new BaseSubscriber<>() {
+              @Override
+              protected void hookOnSubscribe(final Subscription subscription) {
+                subscription.request(1);
+              }
+
+              @Override
+              protected void hookOnNext(final Envelope envelope) {
+                observed.add((String) envelope.get(Field.INCOMING));
+              }
+            });
+
+    pipeline.push("a");
+    pipeline.push("b");
+    pipeline.push("c");
+
+    assertThat(received).contains("a", "b", "c");
+    assertThat(observed).containsExactly("a");
   }
 }
