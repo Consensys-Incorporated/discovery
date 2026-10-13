@@ -124,7 +124,7 @@ public class KBuckets {
   public synchronized void performMaintenance() {
     buckets.values().stream()
         .filter(bucket -> !bucket.isEmpty())
-        .min(Comparator.comparing(KBucket::getLastMaintenanceTime))
+        .min(Comparator.comparingLong(KBucket::getLastMaintenanceTime))
         .ifPresent(KBucket::performMaintenance);
   }
 

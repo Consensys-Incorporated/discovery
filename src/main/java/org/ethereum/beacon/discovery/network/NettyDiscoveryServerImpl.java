@@ -9,7 +9,9 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -21,21 +23,19 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ethereum.beacon.discovery.pipeline.Envelope;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.FluxSink;
-import reactor.core.publisher.ReplayProcessor;
+import reactor.core.publisher.Sinks;
 
 public class NettyDiscoveryServerImpl implements NettyDiscoveryServer {
 
   private static final Logger LOG = LogManager.getLogger(NettyDiscoveryServerImpl.class);
   private static final int RECREATION_TIMEOUT = 5000;
 
-  private final ReplayProcessor<Envelope> incomingPackets = ReplayProcessor.cacheLast();
-  private final FluxSink<Envelope> incomingSink = incomingPackets.sink();
+  private final Sinks.Many<Envelope> incomingPackets = Sinks.many().replay().latest();
   private final InetSocketAddress listenAddress;
   private final int trafficReadLimit; // bytes per sec
   private AtomicBoolean listen = new AtomicBoolean(false);
   private Channel channel;
-  private NioEventLoopGroup nioGroup;
+  private EventLoopGroup nioGroup;
 
   public NettyDiscoveryServerImpl(
       final InetSocketAddress listenAddress, final int trafficReadLimit) {
@@ -51,11 +51,11 @@ public class NettyDiscoveryServerImpl implements NettyDiscoveryServer {
           new IllegalStateException(
               "Attempted to start an already started server listening on " + listenAddress));
     }
-    nioGroup = new NioEventLoopGroup(1);
+    nioGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
     return startServer(nioGroup);
   }
 
-  private CompletableFuture<NioDatagramChannel> startServer(final NioEventLoopGroup group) {
+  private CompletableFuture<NioDatagramChannel> startServer(final EventLoopGroup group) {
     final CompletableFuture<NioDatagramChannel> future = new CompletableFuture<>();
     final Bootstrap b = new Bootstrap();
     b.group(group)
@@ -68,7 +68,7 @@ public class NettyDiscoveryServerImpl implements NettyDiscoveryServer {
                 pipeline
                     .addFirst(new LoggingHandler(LogLevel.TRACE))
                     .addLast(new DatagramToEnvelope())
-                    .addLast(new IncomingMessageSink(incomingSink));
+                    .addLast(new IncomingMessageSink(incomingPackets));
 
                 if (trafficReadLimit != 0) {
                   pipeline.addFirst(new ChannelTrafficShapingHandler(0, trafficReadLimit));
@@ -119,7 +119,7 @@ public class NettyDiscoveryServerImpl implements NettyDiscoveryServer {
 
   @Override
   public Publisher<Envelope> getIncomingPackets() {
-    return incomingPackets;
+    return incomingPackets.asFlux();
   }
 
   @Override

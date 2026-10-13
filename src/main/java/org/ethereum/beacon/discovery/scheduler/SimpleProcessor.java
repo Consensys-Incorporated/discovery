@@ -5,17 +5,17 @@
 package org.ethereum.beacon.discovery.scheduler;
 
 // import org.ethereum.beacon.schedulers.Scheduler;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Processor;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxProcessor;
-import reactor.core.publisher.FluxSink;
-import reactor.core.publisher.ReplayProcessor;
+import reactor.core.publisher.Sinks;
 
 public class SimpleProcessor<T> implements Processor<T, T> {
-  FluxProcessor<T, T> subscriber;
-  FluxSink<T> sink;
+  private static final Logger LOG = LogManager.getLogger(SimpleProcessor.class);
+  Sinks.Many<T> sinks;
   Flux<T> publisher;
   boolean subscribed;
 
@@ -29,10 +29,8 @@ public class SimpleProcessor<T> implements Processor<T, T> {
   }
 
   public SimpleProcessor(reactor.core.scheduler.Scheduler scheduler, String name) {
-    ReplayProcessor<T> processor = ReplayProcessor.cacheLast();
-    subscriber = processor;
-    sink = subscriber.sink();
-    publisher = Flux.from(processor).publishOn(scheduler).onBackpressureError().name(name);
+    sinks = Sinks.many().replay().latest();
+    publisher = sinks.asFlux().publishOn(scheduler).onBackpressureError().name(name);
   }
 
   @SuppressWarnings({"rawtypes"})
@@ -53,7 +51,7 @@ public class SimpleProcessor<T> implements Processor<T, T> {
     publisher =
         publisher.doOnCancel(
             () -> {
-              if (subscribed && !subscriber.hasDownstreams()) {
+              if (subscribed && sinks.currentSubscriberCount() == 0) {
                 subscribed = false;
                 handler.run();
               }
@@ -68,21 +66,30 @@ public class SimpleProcessor<T> implements Processor<T, T> {
 
   @Override
   public void onSubscribe(Subscription subscription) {
-    subscriber.onSubscribe(subscription);
+    subscription.request(Long.MAX_VALUE);
   }
 
   @Override
   public void onNext(T t) {
-    sink.next(t);
+    final Sinks.EmitResult result = sinks.tryEmitNext(t);
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit next value {}: {}", t, result);
+    }
   }
 
   @Override
   public void onError(Throwable throwable) {
-    sink.error(throwable);
+    final Sinks.EmitResult result = sinks.tryEmitError(throwable);
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit error {}: {}", throwable, result);
+    }
   }
 
   @Override
   public void onComplete() {
-    sink.complete();
+    final Sinks.EmitResult result = sinks.tryEmitComplete();
+    if (result.isFailure()) {
+      LOG.warn("Failed to emit completion signal: {}", result);
+    }
   }
 }

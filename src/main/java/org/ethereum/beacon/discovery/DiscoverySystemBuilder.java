@@ -13,9 +13,9 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import io.netty.channel.socket.InternetProtocolFamily;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
+import java.net.StandardProtocolFamily;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -46,6 +46,7 @@ import org.ethereum.beacon.discovery.storage.LocalNodeRecordStore;
 import org.ethereum.beacon.discovery.storage.NewAddressHandler;
 import org.ethereum.beacon.discovery.storage.NodeRecordListener;
 import org.ethereum.beacon.discovery.task.DiscoveryTaskManager;
+import org.ethereum.beacon.discovery.util.Utils;
 
 public class DiscoverySystemBuilder {
 
@@ -185,10 +186,10 @@ public class DiscoverySystemBuilder {
         listenAddresses.size() == 1 || listenAddresses.size() == 2,
         "Can define only 1 or 2 listen addresses - IPv4/IPv6 or IPv4 and IPv6");
     if (listenAddresses.size() == 2) {
-      final Set<InternetProtocolFamily> ipFamilies =
+      final Set<StandardProtocolFamily> ipFamilies =
           listenAddresses.stream()
               .map(InetSocketAddress::getAddress)
-              .map(InternetProtocolFamily::of)
+              .map(Utils::protocolFamilyOf)
               .collect(Collectors.toSet());
       if (ipFamilies.size() != 2) {
         throw new IllegalArgumentException(

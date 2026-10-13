@@ -124,6 +124,8 @@ public class NodeSessionManager extends AbstractSkippingEnvelopeHandler {
     deleteSession(sessionKey);
   }
 
+  // Identity comparison on NodeSession is intentional; see the comment in the method body.
+  @SuppressWarnings("ReferenceEquality")
   private void deleteSession(final SessionKey sessionKey) {
     final NodeSession removedSession = recentSessions.remove(sessionKey);
     if (removedSession != null) {

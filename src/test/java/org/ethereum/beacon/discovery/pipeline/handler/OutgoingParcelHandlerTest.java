@@ -4,9 +4,11 @@
 
 package org.ethereum.beacon.discovery.pipeline.handler;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -18,7 +20,7 @@ import org.ethereum.beacon.discovery.packet.impl.RawPacketImpl;
 import org.ethereum.beacon.discovery.pipeline.Envelope;
 import org.ethereum.beacon.discovery.pipeline.Field;
 import org.junit.jupiter.api.Test;
-import reactor.core.publisher.FluxSink;
+import reactor.core.publisher.Sinks;
 
 class OutgoingParcelHandlerTest {
 
@@ -30,8 +32,8 @@ class OutgoingParcelHandlerTest {
       new InetSocketAddress(InetAddress.getLoopbackAddress(), 8080);
 
   @SuppressWarnings("unchecked")
-  private final FluxSink<NetworkParcel> outgoingSink =
-      (FluxSink<NetworkParcel>) mock(FluxSink.class);
+  private final Sinks.Many<NetworkParcel> outgoingSink =
+      (Sinks.Many<NetworkParcel>) mock(Sinks.Many.class);
 
   private final AddressAccessPolicy addressAccessPolicy =
       address -> !address.equals(DISALLOWED_ADDRESS);
@@ -50,11 +52,12 @@ class OutgoingParcelHandlerTest {
 
   @Test
   void shouldSendPacketsToAllowedHosts() {
+    when(outgoingSink.tryEmitNext(any())).thenReturn(Sinks.EmitResult.OK);
     final Envelope envelope = new Envelope();
     final NetworkParcelV5 parcel = new NetworkParcelV5(PACKET, ALLOWED_ADDRESS);
     envelope.put(Field.INCOMING, parcel);
     handler.handle(envelope);
 
-    verify(outgoingSink).next(parcel);
+    verify(outgoingSink).tryEmitNext(parcel);
   }
 }

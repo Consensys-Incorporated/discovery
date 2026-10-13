@@ -6,13 +6,14 @@ package org.ethereum.beacon.discovery.network;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.socket.DatagramPacket;
-import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import java.net.InetSocketAddress;
+import java.net.StandardProtocolFamily;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
+import org.ethereum.beacon.discovery.util.Utils;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 
@@ -20,7 +21,7 @@ import reactor.core.publisher.Flux;
 public class NettyDiscoveryClientImpl implements DiscoveryClient {
   private static final Logger LOG = LogManager.getLogger(NettyDiscoveryClientImpl.class);
 
-  private final Map<InternetProtocolFamily, NioDatagramChannel> channels;
+  private final Map<StandardProtocolFamily, NioDatagramChannel> channels;
 
   /**
    * Constructs UDP client using
@@ -30,7 +31,7 @@ public class NettyDiscoveryClientImpl implements DiscoveryClient {
    */
   public NettyDiscoveryClientImpl(
       final Publisher<NetworkParcel> outgoingStream,
-      final Map<InternetProtocolFamily, NioDatagramChannel> channels) {
+      final Map<StandardProtocolFamily, NioDatagramChannel> channels) {
     this.channels = channels;
     Flux.from(outgoingStream)
         .subscribe(
@@ -47,7 +48,7 @@ public class NettyDiscoveryClientImpl implements DiscoveryClient {
     final DatagramPacket packet =
         new DatagramPacket(Unpooled.copiedBuffer(data.toArray()), destination);
     final NioDatagramChannel channel =
-        channels.get(InternetProtocolFamily.of(destination.getAddress()));
+        channels.get(Utils.protocolFamilyOf(destination.getAddress()));
     if (channel == null) {
       LOG.trace(
           () -> String.format("Dropping packet %s because of IP version incompatibility", packet));

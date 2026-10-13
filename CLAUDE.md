@@ -38,7 +38,7 @@ CI runs `./gradlew --no-daemon --parallel build`.
 
 ## Code Style & Quality
 
-- **Formatter**: Spotless with Google Java Format 1.17.0 — run `spotlessApply` before committing.
+- **Formatter**: Spotless with Google Java Format 1.36.1 — run `spotlessApply` before committing.
 - **License headers**: Apache 2.0 SPDX header required on all Java files (template: `gradle/java.license`).
 - **Compiler**: All warnings treated as errors (`-Werror`). Error-Prone static analysis is enabled.
 - **Import order**: `tech.pegasys`, `net.consensys`, `java`, then blank-separated third-party imports.
@@ -90,7 +90,6 @@ Session state is managed in `task/` alongside `NodeSession`. The last WHOAREYOU 
 ### Key Dependencies
 
 - **Netty** — UDP transport
-- **Vert.x** — async I/O coordination
 - **Tuweni** (ConsenSys) — `Bytes`, RLP encoding, crypto utilities
 - **BouncyCastle** — secp256k1 / ECDSA / AES
 - **Project Reactor** — reactive streams for `streamLiveNodes()`
