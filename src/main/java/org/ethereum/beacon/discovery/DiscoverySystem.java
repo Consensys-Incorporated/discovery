@@ -52,6 +52,20 @@ public interface DiscoverySystem {
    */
   CompletableFuture<Bytes> talk(NodeRecord nodeRecord, Bytes protocol, Bytes request);
 
+  /**
+   * Returns live routing-table and authenticated-session records, with one record per node ID. The
+   * highest sequence number wins; routing-table records take precedence on equal sequences.
+   *
+   * <p>Both sources are fully traversed and the selected records are buffered before this method
+   * returns. Short-circuiting operations on the returned stream, such as {@code findFirst()} or
+   * {@code limit(n)}, do not reduce this traversal cost. Buffer storage is proportional to the
+   * number of unique node IDs observed.
+   *
+   * <p>The traversal is not an atomic snapshot of both sources. Concurrent updates may occur, so
+   * the highest sequence number is selected among the records observed during traversal.
+   *
+   * @return the live node records
+   */
   Stream<NodeRecord> streamLiveNodes();
 
   CompletableFuture<Collection<NodeRecord>> searchForNewPeers();
