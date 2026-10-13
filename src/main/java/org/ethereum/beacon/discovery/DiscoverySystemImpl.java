@@ -5,9 +5,12 @@
 package org.ethereum.beacon.discovery;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -98,7 +101,17 @@ public class DiscoverySystemImpl implements DiscoverySystem, MutableDiscoverySys
   @Override
   public Stream<NodeRecord> streamLiveNodes() {
     return Stream.concat(
-        buckets.streamClosestNodes(Bytes32.ZERO), discoveryManager.streamActiveSessions());
+        buckets.streamClosestNodes(Bytes32.ZERO), discoveryManager.streamActiveSessions())
+        .collect(
+            Collectors.toMap(
+                NodeRecord::getNodeId,
+                Function.identity(),
+                // Buckets come first, so retaining the existing record also resolves ties.
+                (existing, candidate) ->
+                    candidate.getSeq().compareTo(existing.getSeq()) > 0 ? candidate : existing,
+                LinkedHashMap::new))
+        .values()
+        .stream();
   }
 
   @Override
