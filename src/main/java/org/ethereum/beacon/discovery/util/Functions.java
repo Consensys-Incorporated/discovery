@@ -20,15 +20,14 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.crypto.Hash;
 import org.apache.tuweni.crypto.SECP256K1;
 import org.apache.tuweni.crypto.SECP256K1.KeyPair;
-import org.apache.tuweni.crypto.SECP256K1.Parameters;
 import org.apache.tuweni.crypto.SECP256K1.PublicKey;
 import org.apache.tuweni.crypto.SECP256K1.SecretKey;
-import org.apache.tuweni.crypto.SECP256K1.Signature;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator;
 import org.bouncycastle.crypto.params.HKDFParameters;
 import org.bouncycastle.math.ec.ECPoint;
+import org.ethereum.beacon.discovery.crypto.Secp256k1;
 import org.ethereum.beacon.discovery.crypto.Signer;
 
 /** Set of cryptography and utilities functions used in discovery */
@@ -67,10 +66,7 @@ public class Functions {
    * @return ECDSA signature with properties merged together: r || s
    */
   public static Bytes sign(final SecretKey secretKey, final Bytes32 messageHash) {
-    final KeyPair keyPair = KeyPair.fromSecretKey(secretKey);
-    final Signature signature = SECP256K1.signHashed(messageHash, keyPair);
-    // cutting v
-    return signature.bytes().slice(0, 64);
+    return Secp256k1.sign(secretKey.bytes().toUnsignedBigInteger(), messageHash);
   }
 
   /**
@@ -87,25 +83,11 @@ public class Functions {
       LOG.trace("Invalid signature size, should be {} bytes", SIGNATURE_SIZE);
       return false;
     }
-    final PublicKey publicKey = derivePublicKeyFromCompressed(pubKey);
-    try {
-      for (byte v = 0; v <= 1; v++) {
-        final boolean verified =
-            SECP256K1.verifyHashed(
-                hashedMessage,
-                Signature.create(
-                    v,
-                    signature.slice(0, 32).toUnsignedBigInteger(),
-                    signature.slice(32).toUnsignedBigInteger()),
-                publicKey);
-        if (verified) {
-          return true;
-        }
-      }
-    } catch (IllegalArgumentException e) {
-      LOG.trace("Failed to verify ECDSA signature", e);
-    }
-    return false;
+    Preconditions.checkArgument(
+        pubKey.size() == COMPRESSED_PUBKEY_SIZE,
+        "Invalid compressed public key size, should be %s bytes",
+        COMPRESSED_PUBKEY_SIZE);
+    return Secp256k1.verify(signature, hashedMessage, Secp256k1.decodePoint(pubKey));
   }
 
   public static SECP256K1.KeyPair randomKeyPair() {
@@ -118,17 +100,11 @@ public class Functions {
     return createKeyPairFromSecretBytes(Bytes32.wrap(privKeyBytes));
   }
 
-  /** Maps public key to point on {@link org.apache.tuweni.crypto.SECP256K1.Parameters#CURVE} */
+  /**
+   * Maps public key (compressed, uncompressed or uncompressed without prefix) to point on secp256k1
+   */
   public static ECPoint publicKeyToPoint(final Bytes pkey) {
-    final byte[] destPubPointBytes;
-    if (pkey.size() == 64) { // uncompressed
-      destPubPointBytes = new byte[pkey.size() + 1];
-      destPubPointBytes[0] = 0x04; // default prefix
-      System.arraycopy(pkey.toArray(), 0, destPubPointBytes, 1, pkey.size());
-    } else {
-      destPubPointBytes = pkey.toArray();
-    }
-    return Parameters.CURVE.getCurve().decodePoint(destPubPointBytes);
+    return Secp256k1.decodePoint(pkey);
   }
 
   public static PublicKey derivePublicKeyFromCompressed(final Bytes pubKey) {
@@ -143,19 +119,19 @@ public class Functions {
 
   /** Derives public key in SECP256K1, compressed */
   public static Bytes deriveCompressedPublicKeyFromPrivate(final SecretKey secretKey) {
-    final PublicKey publicKey = PublicKey.fromSecretKey(secretKey);
-    return Bytes.wrap(publicKey.asEcPoint().getEncoded(true));
+    return Secp256k1.compressedPublicKey(secretKey.bytes().toUnsignedBigInteger());
   }
 
   /** Derives key agreement ECDH by multiplying private key by public */
   public static Bytes deriveECDHKeyAgreement(final SecretKey srcSecretKey, final Bytes destPubKey) {
-    final ECPoint pudDestPoint = publicKeyToPoint(destPubKey);
-    final ECPoint mult = pudDestPoint.multiply(new BigInteger(1, srcSecretKey.bytes().toArray()));
-    return Bytes.wrap(mult.getEncoded(true));
+    return Secp256k1.ecdh(srcSecretKey.bytes().toUnsignedBigInteger(), destPubKey);
   }
 
   public static KeyPair createKeyPairFromSecretBytes(final Bytes32 privateKey) {
-    return KeyPair.fromSecretKey(createSecretKey(privateKey));
+    final SecretKey secretKey = createSecretKey(privateKey);
+    return KeyPair.create(
+        secretKey,
+        PublicKey.fromBytes(Secp256k1.uncompressedPublicKey(privateKey.toUnsignedBigInteger())));
   }
 
   public static SecretKey createSecretKey(final Bytes32 privateKey) {
