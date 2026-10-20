@@ -29,9 +29,7 @@ import org.bouncycastle.util.BigIntegers;
  */
 public final class Secp256k1 {
   private static final X9ECParameters PARAMETERS = CustomNamedCurves.getByName("secp256k1");
-  private static final ECDomainParameters DOMAIN =
-      new ECDomainParameters(
-          PARAMETERS.getCurve(), PARAMETERS.getG(), PARAMETERS.getN(), PARAMETERS.getH());
+  private static final ECDomainParameters DOMAIN = new ECDomainParameters(PARAMETERS);
 
   private static final BigInteger HALF_CURVE_ORDER = DOMAIN.getN().shiftRight(1);
   private static final int SCALAR_SIZE = 32;
@@ -57,6 +55,16 @@ public final class Secp256k1 {
       encoded = publicKey.toArrayUnsafe();
     }
     return DOMAIN.getCurve().decodePoint(encoded);
+  }
+
+  /**
+   * Checks that the scalar is a valid private key, i.e. in the interval {@code [1, n - 1]}.
+   *
+   * @return the scalar
+   * @throws IllegalArgumentException if it is not
+   */
+  public static BigInteger validatePrivateKey(final BigInteger privateKey) {
+    return DOMAIN.validatePrivateScalar(privateKey);
   }
 
   /** Public key point of the given private key. */
@@ -109,12 +117,7 @@ public final class Secp256k1 {
     final BigInteger s = signature.slice(SCALAR_SIZE, SCALAR_SIZE).toUnsignedBigInteger();
     final ECDSASigner signer = new ECDSASigner();
     signer.init(false, new ECPublicKeyParameters(publicKey, DOMAIN));
-    try {
-      return signer.verifySignature(messageHash.toArrayUnsafe(), r, s);
-    } catch (final NullPointerException e) {
-      // BouncyCastle can throw on specially crafted (invalid) signatures
-      return false;
-    }
+    return signer.verifySignature(messageHash.toArrayUnsafe(), r, s);
   }
 
   /**

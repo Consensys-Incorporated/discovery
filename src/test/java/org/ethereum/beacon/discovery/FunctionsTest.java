@@ -7,9 +7,11 @@ package org.ethereum.beacon.discovery;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Random;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.crypto.SECP256K1.KeyPair;
+import org.apache.tuweni.crypto.SECP256K1.SecretKey;
 import org.bouncycastle.math.ec.ECPoint;
 import org.ethereum.beacon.discovery.util.CryptoUtil;
 import org.ethereum.beacon.discovery.util.Functions;
@@ -146,6 +148,20 @@ public class FunctionsTest {
     Bytes message =
         Bytes.concatenate(Bytes.wrap("discovery-id-nonce".getBytes()), nonce, ephemeralKey);
     assertTrue(Functions.verifyECDSASignature(idNonceSig, Functions.hash(message), pubKey));
+  }
+
+  @Test
+  public void createKeyPairFromSecretBytes_matchesReference() {
+    final Random random = new Random(11);
+    for (int i = 0; i < 20; i++) {
+      final Bytes32 secret = Bytes32.random(random);
+      final KeyPair expected = KeyPair.fromSecretKey(SecretKey.fromBytes(secret));
+
+      final KeyPair actual = Functions.createKeyPairFromSecretBytes(secret);
+
+      assertEquals(expected.secretKey(), actual.secretKey());
+      assertEquals(expected.publicKey(), actual.publicKey());
+    }
   }
 
   @Test

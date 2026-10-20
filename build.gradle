@@ -226,7 +226,10 @@ tasks.named('compileJmhJava') {
   }
 }
 
-classes.finalizedBy(jmhClasses)
+// Compile the benchmarks as part of `check` so CI catches breakage without every build paying for it
+tasks.named('check') {
+  dependsOn jmhClasses
+}
 
 tasks.register('jmh', JavaExec) {
   dependsOn jmhClasses

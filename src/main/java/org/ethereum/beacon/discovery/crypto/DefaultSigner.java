@@ -4,22 +4,29 @@
 
 package org.ethereum.beacon.discovery.crypto;
 
-import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
 import java.math.BigInteger;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.crypto.SECP256K1.SecretKey;
 
-/** In-memory {@link Signer} implementation backed by a SECP256K1 {@link SecretKey}. */
+/**
+ * In-memory {@link Signer} implementation backed by a SECP256K1 {@link SecretKey}.
+ *
+ * <p>The key material is copied at construction time: the signer keeps its own immutable copy of
+ * the scalar and the derived public key, so later changes to the {@link SecretKey} (including
+ * {@link SecretKey#destroy()}) do not affect it.
+ */
 public class DefaultSigner implements Signer {
   private final BigInteger privateKey;
-  private final Supplier<Bytes> compressedPublicKey;
+  private final Bytes compressedPublicKey;
 
+  /**
+   * @throws IllegalArgumentException if the secret key is not a valid secp256k1 scalar, i.e. not in
+   *     the interval {@code [1, n - 1]}
+   */
   public DefaultSigner(final SecretKey secretKey) {
-    this.privateKey = secretKey.bytes().toUnsignedBigInteger();
-    this.compressedPublicKey =
-        Suppliers.memoize(() -> Secp256k1.compressedPublicKey(this.privateKey));
+    this.privateKey = Secp256k1.validatePrivateKey(secretKey.bytes().toUnsignedBigInteger());
+    this.compressedPublicKey = Secp256k1.compressedPublicKey(privateKey);
   }
 
   /** {@inheritDoc} */
@@ -37,6 +44,6 @@ public class DefaultSigner implements Signer {
   /** {@inheritDoc} */
   @Override
   public Bytes deriveCompressedPublicKeyFromPrivate() {
-    return compressedPublicKey.get();
+    return compressedPublicKey;
   }
 }
