@@ -9,7 +9,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
-import org.apache.tuweni.crypto.SECP256K1.KeyPair;
+import org.apache.tuweni.crypto.SECP256K1.SecretKey;
 import org.apache.tuweni.units.bigints.UInt64;
 import org.ethereum.beacon.discovery.message.V5Message;
 import org.ethereum.beacon.discovery.packet.HandshakeMessagePacket.HandshakeAuthData;
@@ -87,8 +87,7 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       Bytes remotePubKey = (Bytes) nodeRecord.get(EnrField.PKEY_SECP256K1);
       byte[] ephemeralKeyBytes = new byte[32];
       Functions.getRandom().nextBytes(ephemeralKeyBytes);
-      KeyPair ephemeralKeyPair =
-          Functions.createKeyPairFromSecretBytes(Bytes32.wrap(ephemeralKeyBytes));
+      SecretKey ephemeralSecretKey = Functions.createSecretKey(Bytes32.wrap(ephemeralKeyBytes));
 
       // The handshake uses the unmasked WHOAREYOU challenge as an input:
       // challenge-data     = masking-iv || static-header || authdata
@@ -104,11 +103,7 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       Bytes32 destNodeId = Bytes32.wrap(nodeRecord.getNodeId());
       Functions.HKDFKeys hkdfKeys =
           Functions.hkdfExpand(
-              session.getHomeNodeId(),
-              destNodeId,
-              ephemeralKeyPair.secretKey(),
-              remotePubKey,
-              challengeData);
+              session.getHomeNodeId(), destNodeId, ephemeralSecretKey, remotePubKey, challengeData);
       final Optional<RequestInfo> embeddedRequestOpt = session.getFirstPendingRequestInfo();
       if (embeddedRequestOpt.isEmpty()) {
         // Race: the last pending request expired between the gate above and this lookup
@@ -131,8 +126,7 @@ public class WhoAreYouPacketHandler extends AbstractSkippingEnvelopeHandler {
       session.setInitiatorKey(hkdfKeys.getInitiatorKey());
       session.setRecipientKey(hkdfKeys.getRecipientKey());
 
-      Bytes ephemeralPubKey =
-          Functions.deriveCompressedPublicKeyFromPrivate(ephemeralKeyPair.secretKey());
+      Bytes ephemeralPubKey = Functions.deriveCompressedPublicKeyFromPrivate(ephemeralSecretKey);
 
       Bytes idSignature =
           HandshakeAuthData.signId(challengeData, ephemeralPubKey, destNodeId, session.getSigner());

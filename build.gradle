@@ -205,6 +205,39 @@ javadoc {
   options.encoding = 'UTF-8'
 }
 
+// JMH benchmarks: ./gradlew jmh --args='<jmh options, e.g. Secp256k1Benchmark -prof gc>'
+sourceSets {
+  jmh {
+    java.srcDirs = ['src/jmh/java']
+    resources.srcDirs = ['src/jmh/resources']
+    compileClasspath += sourceSets.main.runtimeClasspath
+  }
+}
+
+dependencies {
+  jmhImplementation 'org.openjdk.jmh:jmh-core'
+  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess'
+}
+
+tasks.named('compileJmhJava') {
+  options.compilerArgs = []
+  options.errorprone {
+    enabled = false
+  }
+}
+
+// Compile the benchmarks as part of `check` so CI catches breakage without every build paying for it
+tasks.named('check') {
+  dependsOn jmhClasses
+}
+
+tasks.register('jmh', JavaExec) {
+  dependsOn jmhClasses
+  mainClass = 'org.openjdk.jmh.Main'
+  classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
+  systemProperty("jmh.blackhole.mode", "COMPILER")
+}
+
 task runTestDiscovery(type:JavaExec) {
     mainClass = 'org.ethereum.beacon.discovery.app.DiscoveryTestServer'
     classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
