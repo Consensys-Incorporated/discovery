@@ -12,12 +12,12 @@ import org.apache.tuweni.crypto.SECP256K1.SecretKey;
 /**
  * In-memory {@link Signer} implementation backed by a SECP256K1 {@link SecretKey}.
  *
- * <p>The key material is copied at construction time: the signer keeps its own immutable copy of
- * the scalar and the derived public key, so later changes to the {@link SecretKey} (including
- * {@link SecretKey#destroy()}) do not affect it.
+ * <p>The signer keeps a reference to the {@link SecretKey} and reads it on every private key
+ * operation, so {@link SecretKey#destroy()} disables signing and key agreement. The compressed
+ * public key is derived once at construction and remains available afterwards.
  */
 public class DefaultSigner implements Signer {
-  private final BigInteger privateKey;
+  private final SecretKey secretKey;
   private final Bytes compressedPublicKey;
 
   /**
@@ -25,25 +25,30 @@ public class DefaultSigner implements Signer {
    *     the interval {@code [1, n - 1]}
    */
   public DefaultSigner(final SecretKey secretKey) {
-    this.privateKey = Secp256k1.validatePrivateKey(secretKey.bytes().toUnsignedBigInteger());
-    this.compressedPublicKey = Secp256k1.compressedPublicKey(privateKey);
+    this.secretKey = secretKey;
+    this.compressedPublicKey =
+        Secp256k1.compressedPublicKey(Secp256k1.validatePrivateKey(scalar()));
   }
 
   /** {@inheritDoc} */
   @Override
   public Bytes deriveECDHKeyAgreement(final Bytes peerPublicKey) {
-    return Secp256k1.ecdh(privateKey, peerPublicKey);
+    return Secp256k1.ecdh(scalar(), peerPublicKey);
   }
 
   /** {@inheritDoc} */
   @Override
   public Bytes sign(final Bytes32 messageHash) {
-    return Secp256k1.sign(privateKey, messageHash);
+    return Secp256k1.sign(scalar(), messageHash);
   }
 
   /** {@inheritDoc} */
   @Override
   public Bytes deriveCompressedPublicKeyFromPrivate() {
     return compressedPublicKey;
+  }
+
+  private BigInteger scalar() {
+    return secretKey.bytes().toUnsignedBigInteger();
   }
 }

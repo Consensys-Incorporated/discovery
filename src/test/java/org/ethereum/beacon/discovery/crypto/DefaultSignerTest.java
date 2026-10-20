@@ -88,6 +88,22 @@ class DefaultSignerTest {
         .isNotNull();
   }
 
+  @Test
+  void destroyedSecretKey_disablesPrivateKeyOperations() {
+    final SecretKey secretKey =
+        SecretKey.fromInteger(keyPair.secretKey().bytes().toUnsignedBigInteger());
+    final DefaultSigner destroyable = new DefaultSigner(secretKey);
+    final Bytes publicKey = destroyable.deriveCompressedPublicKeyFromPrivate();
+
+    secretKey.destroy();
+
+    assertThatThrownBy(() -> destroyable.sign(Bytes32.random(random)))
+        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> destroyable.deriveECDHKeyAgreement(publicKey))
+        .isInstanceOf(NullPointerException.class);
+    assertThat(destroyable.deriveCompressedPublicKeyFromPrivate()).isEqualTo(publicKey);
+  }
+
   private static KeyPair referenceKeyPair(final Random random) {
     while (true) {
       final BigInteger d = new BigInteger(256, random);
