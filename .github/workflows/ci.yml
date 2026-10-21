@@ -10,8 +10,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {} # lock everything by default (least-privilege)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,7 +25,7 @@ jobs:
   build:
     runs-on: ubuntu-26.04
     permissions:
-      contents: read
+      contents: read  # least-privilege for this job only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,6 +59,8 @@ jobs:
     environment: publish
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read  # least-privilege for this job only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
