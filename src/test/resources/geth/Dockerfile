@@ -13,9 +13,13 @@ ADD v5_interop_test.go /go/go-ethereum/p2p/discover/v5_interop_test.go
 ADD test.sh /test.sh
 RUN chmod +x /test.sh
 
-# Idle run to download all dependencies for the test
-ENV TEST_DURATION=1
+# Idle run to download all dependencies for the test; the build cache lives under /go
+# so the unprivileged user below can reuse it
+ENV TEST_DURATION=1 GOCACHE=/go/.cache
 RUN cd /go/go-ethereum/p2p/discover && go test -run TestNodesServer
+
+RUN adduser -D -u 10001 interop && chown -R interop /go
+USER interop
 
 EXPOSE 8545 8546 30303 30303/udp
 ENTRYPOINT ["/test.sh"]
