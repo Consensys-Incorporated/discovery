@@ -1,11 +1,14 @@
 name: "Validate Gradle Wrapper"
 on: [push, pull_request]
 
+permissions: {} # lock everything by default (least-privilege)
+
 jobs:
   validation:
     name: "Validation"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # least-privilege for this job only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # v5.0.2
-      - uses: gradle/actions/wrapper-validation@0723195856401067f7a2779048b490ace7a47d7c
+      - uses: gradle/actions/wrapper-validation@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2

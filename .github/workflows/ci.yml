@@ -10,6 +10,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions: {} # lock everything by default (least-privilege)
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -23,7 +25,7 @@ jobs:
   build:
     runs-on: ubuntu-26.04
     permissions:
-      contents: read
+      contents: read  # least-privilege for this job only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,7 +35,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
       - name: Build
         run: ./gradlew --no-daemon --parallel build
       - name: Upload test results
@@ -57,6 +59,8 @@ jobs:
     environment: publish
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read  # least-privilege for this job only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,7 +70,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
       - name: Publish
         env:
           JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
